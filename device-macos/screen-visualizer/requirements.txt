@@ -1,0 +1,5 @@
+# Screen stream reader (install from local package)
+-e ../internal-lib/screen-stream-reader
+
+numpy>=1.20.0
+opencv-python>=4.5.0

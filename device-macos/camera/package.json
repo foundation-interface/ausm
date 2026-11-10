@@ -1,0 +1,73 @@
+{
+  "name": "@ausm/device-macos-camera",
+  "version": "0.1.0",
+  "description": "macOS webcam capture (AVFoundation) into POSIX shared memory, with a Node client and on-demand JPEG frames",
+  "main": "dist/index.js",
+  "module": "dist/index.mjs",
+  "types": "dist/index.d.ts",
+  "exports": {
+    "./package.json": "./package.json",
+    ".": {
+      "import": {
+        "types": "./dist/index.d.mts",
+        "default": "./dist/index.mjs"
+      },
+      "require": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      }
+    }
+  },
+  "scripts": {
+    "build": "npm run build:helper && tsup",
+    "build:helper": "cd swift && swift build -c release --arch arm64 --arch x86_64 -Xlinker -sectcreate -Xlinker __TEXT -Xlinker __info_plist -Xlinker \"$(pwd)/Sources/CameraHelper/Info.plist\" && mkdir -p ../build && cp \"$(swift build -c release --arch arm64 --arch x86_64 --show-bin-path)/CameraHelper\" ../build/camera-helper && codesign --force --sign \"${SIGN_IDENTITY:--}\" --identifier \"com.ausm.camera-helper\" ../build/camera-helper",
+    "build:ts": "tsup",
+    "clean": "rm -rf dist && cd swift && swift package clean",
+    "rebuild": "npm run clean && npm run build",
+    "typecheck": "tsc --noEmit",
+    "test:capture": "node examples/capture-test.js",
+    "prepublishOnly": "npm run build",
+    "test:swift": "cd swift && swift test"
+  },
+  "files": [
+    "dist",
+    "build/camera-helper",
+    "swift/Package.swift",
+    "swift/Sources",
+    "README.md",
+    "LICENSE"
+  ],
+  "keywords": [
+    "camera",
+    "webcam",
+    "avfoundation",
+    "macos",
+    "shared-memory",
+    "low-latency"
+  ],
+  "license": "MIT",
+  "devDependencies": {
+    "@types/node": "^20.10.0",
+    "tsup": "^8.0.0",
+    "typescript": "^5.3.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "os": [
+    "darwin"
+  ],
+  "author": "Timeless",
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/timeless/ausm.git",
+    "directory": "device-macos/camera"
+  },
+  "homepage": "https://github.com/timeless/ausm",
+  "bugs": {
+    "url": "https://github.com/timeless/ausm/issues"
+  }
+}

@@ -1,0 +1,104 @@
+{
+  "name": "@ausm/bridge",
+  "version": "0.1.0",
+  "description": "Electron bridge for forwarding AUSM runtime events to the renderer process",
+  "main": "./dist/index.js",
+  "module": "./dist/index.mjs",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    "./package.json": "./package.json",
+    ".": {
+      "import": {
+        "types": "./dist/index.d.mts",
+        "default": "./dist/index.mjs"
+      },
+      "require": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      }
+    },
+    "./electron": {
+      "types": "./dist/electron-bridge.d.ts",
+      "import": {
+        "types": "./dist/electron-bridge.d.mts",
+        "default": "./dist/electron-bridge.mjs"
+      },
+      "require": {
+        "types": "./dist/electron-bridge.d.ts",
+        "default": "./dist/electron-bridge.js"
+      }
+    },
+    "./preload": {
+      "types": "./dist/preload.d.ts",
+      "import": {
+        "types": "./dist/preload.d.mts",
+        "default": "./dist/preload.mjs"
+      },
+      "require": {
+        "types": "./dist/preload.d.ts",
+        "default": "./dist/preload.js"
+      }
+    },
+    "./preload-api": {
+      "types": "./dist/preload-api.d.ts",
+      "import": {
+        "types": "./dist/preload-api.d.mts",
+        "default": "./dist/preload-api.mjs"
+      },
+      "require": {
+        "types": "./dist/preload-api.d.ts",
+        "default": "./dist/preload-api.js"
+      }
+    }
+  },
+  "typesVersions": {
+    "*": {
+      "electron": [
+        "./dist/electron-bridge.d.ts"
+      ],
+      "preload": [
+        "./dist/preload.d.ts"
+      ],
+      "preload-api": [
+        "./dist/preload-api.d.ts"
+      ]
+    }
+  },
+  "files": [
+    "dist",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch --no-dts",
+    "clean": "rm -rf dist",
+    "prepublishOnly": "npm run build",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@ausm/core": "0.1.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.10.0",
+    "electron": "^40.0.0",
+    "tsup": "^8.0.0",
+    "typescript": "^5.3.0"
+  },
+  "author": "Timeless",
+  "license": "MIT",
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/timeless/ausm.git",
+    "directory": "packages/bridge"
+  },
+  "homepage": "https://github.com/timeless/ausm",
+  "bugs": {
+    "url": "https://github.com/timeless/ausm/issues"
+  }
+}

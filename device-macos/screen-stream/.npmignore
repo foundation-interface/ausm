@@ -1,0 +1,4 @@
+# `files` in package.json is the allow-list; this is a safety net.
+swift/
+dev/
+*.test.*

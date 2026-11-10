@@ -1,0 +1,69 @@
+{
+  "name": "@ausm/material-chat",
+  "version": "0.1.0",
+  "description": "Material Chat — memory search + Claude agent over AUSM materials",
+  "main": "./dist/index.js",
+  "module": "./dist/index.mjs",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    "./package.json": "./package.json",
+    ".": {
+      "import": {
+        "types": "./dist/index.d.mts",
+        "default": "./dist/index.mjs"
+      },
+      "require": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      }
+    }
+  },
+  "bin": {
+    "material-chat": "./dist/server.js"
+  },
+  "files": [
+    "dist",
+    "prompts",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch --no-dts",
+    "start": "tsx src/server.ts",
+    "start:dist": "node dist/server.js",
+    "typecheck": "tsc --noEmit",
+    "clean": "rm -rf dist",
+    "prepublishOnly": "npm run build"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.99.0",
+    "@hono/node-server": "^1.13.0",
+    "better-sqlite3": "^12.11.1",
+    "hono": "^4.6.0",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.11",
+    "@types/node": "^22.0.0",
+    "tsup": "^8.0.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.6.0"
+  },
+  "author": "Timeless",
+  "license": "MIT",
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/timeless/ausm.git",
+    "directory": "material-chat"
+  },
+  "homepage": "https://github.com/timeless/ausm",
+  "bugs": {
+    "url": "https://github.com/timeless/ausm/issues"
+  }
+}

@@ -1,0 +1,167 @@
+{
+  "name": "ausm",
+  "version": "0.1.0",
+  "description": "AUSM — Activity Understanding and Scaffolding Medium (runtime, Electron bridge, material-chat)",
+  "main": "./dist/index.js",
+  "module": "./dist/index.mjs",
+  "types": "./dist/index.d.ts",
+  "typesVersions": {
+    "*": {
+      "runtime": [
+        "./dist/runtime.d.ts"
+      ],
+      "clients": [
+        "./dist/clients.d.ts"
+      ],
+      "bridge": [
+        "./dist/bridge.d.ts"
+      ],
+      "bridge/electron": [
+        "./dist/bridge-electron.d.ts"
+      ],
+      "bridge/preload": [
+        "./dist/bridge-preload.d.ts"
+      ],
+      "bridge/preload-api": [
+        "./dist/bridge-preload-api.d.ts"
+      ],
+      "material-chat": [
+        "./dist/material-chat.d.ts"
+      ]
+    }
+  },
+  "exports": {
+    "./package.json": "./package.json",
+    ".": {
+      "import": {
+        "types": "./dist/index.d.mts",
+        "default": "./dist/index.mjs"
+      },
+      "require": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      }
+    },
+    "./runtime": {
+      "import": {
+        "types": "./dist/runtime.d.mts",
+        "default": "./dist/runtime.mjs"
+      },
+      "require": {
+        "types": "./dist/runtime.d.ts",
+        "default": "./dist/runtime.js"
+      }
+    },
+    "./clients": {
+      "import": {
+        "types": "./dist/clients.d.mts",
+        "default": "./dist/clients.mjs"
+      },
+      "require": {
+        "types": "./dist/clients.d.ts",
+        "default": "./dist/clients.js"
+      }
+    },
+    "./bridge": {
+      "import": {
+        "types": "./dist/bridge.d.mts",
+        "default": "./dist/bridge.mjs"
+      },
+      "require": {
+        "types": "./dist/bridge.d.ts",
+        "default": "./dist/bridge.js"
+      }
+    },
+    "./bridge/electron": {
+      "import": {
+        "types": "./dist/bridge-electron.d.mts",
+        "default": "./dist/bridge-electron.mjs"
+      },
+      "require": {
+        "types": "./dist/bridge-electron.d.ts",
+        "default": "./dist/bridge-electron.js"
+      }
+    },
+    "./bridge/preload": {
+      "import": {
+        "types": "./dist/bridge-preload.d.mts",
+        "default": "./dist/bridge-preload.mjs"
+      },
+      "require": {
+        "types": "./dist/bridge-preload.d.ts",
+        "default": "./dist/bridge-preload.js"
+      }
+    },
+    "./bridge/preload-api": {
+      "import": {
+        "types": "./dist/bridge-preload-api.d.mts",
+        "default": "./dist/bridge-preload-api.mjs"
+      },
+      "require": {
+        "types": "./dist/bridge-preload-api.d.ts",
+        "default": "./dist/bridge-preload-api.js"
+      }
+    },
+    "./material-chat": {
+      "import": {
+        "types": "./dist/material-chat.d.mts",
+        "default": "./dist/material-chat.mjs"
+      },
+      "require": {
+        "types": "./dist/material-chat.d.ts",
+        "default": "./dist/material-chat.js"
+      }
+    }
+  },
+  "files": [
+    "dist",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch --no-dts",
+    "clean": "rm -rf dist",
+    "prepublishOnly": "npm run build",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@ausm/bridge": "0.1.0",
+    "@ausm/core": "0.1.0",
+    "@ausm/material-chat": "0.1.0"
+  },
+  "peerDependencies": {
+    "electron": ">=20.0.0"
+  },
+  "peerDependenciesMeta": {
+    "electron": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "tsup": "^8.0.0",
+    "typescript": "^5.3.0"
+  },
+  "keywords": [
+    "ausm",
+    "activity",
+    "monitoring",
+    "electron"
+  ],
+  "author": "Timeless",
+  "license": "MIT",
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/timeless/ausm.git",
+    "directory": "packages/ausm"
+  },
+  "homepage": "https://github.com/timeless/ausm",
+  "bugs": {
+    "url": "https://github.com/timeless/ausm/issues"
+  }
+}

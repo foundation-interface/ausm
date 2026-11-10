@@ -1,0 +1,33 @@
+{
+  "compilerOptions": {
+    "target": "ES2020",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "declaration": true,
+    "outDir": "./dist",
+    "rootDir": ".",
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "resolveJsonModule": true,
+    "isolatedModules": true
+  },
+  "include": [
+    "index.ts",
+    "types.ts",
+    "frame-reader.ts",
+    "frame-store.ts",
+    "window-tracker.ts",
+    "metadata-extractors.ts",
+    "material-manager.ts",
+    "service.ts",
+    "tests/**/*.ts"
+  ],
+  "exclude": [
+    "node_modules",
+    "dist",
+    "py",
+    "test-visual-dashboard.ts"
+  ]
+}

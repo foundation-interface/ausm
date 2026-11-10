@@ -1,0 +1,54 @@
+{
+  "name": "@ausm/monorepo",
+  "version": "0.1.0",
+  "private": true,
+  "description": "AUSM Monorepo - Activity Understanding and Scaffolding Medium",
+  "workspaces": [
+    "packages/*",
+    "material-chat",
+    "device-macos/text-selection",
+    "device-macos/screen-stream",
+    "device-macos/viewport-manager",
+    "device-macos/material-manager",
+    "device-macos/text-input",
+    "device-macos/cursor-plus-plus",
+    "device-macos/screenshot-detector",
+    "device-macos/clipboard-monitor",
+    "device-macos/camera"
+  ],
+  "scripts": {
+    "postinstall": "npm rebuild better-sqlite3 2>/dev/null || true",
+    "build": "npm run build:phase1 && npm run build:phase2 && npm run build:phase3",
+    "build:services": "npm run build:phase1",
+    "build:packages": "cd packages/core && npm run build && cd ../bridge && npm run build && cd ../ausm && npm run build",
+    "dev": "cd packages/core && npm run dev & cd packages/bridge && npm run dev & wait",
+    "clean": "cd device-macos/text-selection && npm run clean && cd ../../device-macos/screen-stream && npm run clean && cd ../../device-macos/viewport-manager && npm run clean && cd ../../device-macos/material-manager && npm run clean && cd ../../device-macos/text-input && npm run clean && cd ../../device-macos/cursor-plus-plus && npm run clean && cd ../../device-macos/screenshot-detector && npm run clean && cd ../../device-macos/clipboard-monitor && npm run clean && cd ../../device-macos/camera && npm run clean && cd ../../packages/detector-pipeline && npm run clean && cd ../../packages/core && npm run clean && cd ../../packages/bridge && npm run clean && cd ../ausm && npm run clean && cd ../../material-chat && npm run clean",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "services": "npx tsx device-macos/service-manager.ts --list",
+    "services:core": "npx tsx device-macos/service-manager.ts --screen-stream",
+    "services:all": "npx tsx device-macos/service-manager.ts --all",
+    "services:screen": "npx tsx device-macos/service-manager.ts --screen-stream",
+    "services:visualizer": "npx tsx device-macos/service-manager.ts --visualizer",
+    "reader:install": "cd device-macos/internal-lib/screen-stream-reader && pip install -e .",
+    "visualizer:install": "cd device-macos/screen-visualizer && pip install -e .",
+    "visualizer:start": "python3 -m screen_visualizer",
+    "material-chat": "npm run start -w @ausm/material-chat",
+    "selection:demo": "cd device-macos/text-selection && npm run demo",
+    "build:phase1": "cd packages/core && npm run build:base && cd ../../device-macos/text-selection && npm run build && cd ../../device-macos/screen-stream && npm run build && cd ../../device-macos/viewport-manager && npm run build && cd ../../device-macos/material-manager && npm run build && cd ../../device-macos/text-input && npm run build && cd ../../device-macos/cursor-plus-plus && npm run build && cd ../../device-macos/screenshot-detector && npm run build && cd ../../device-macos/clipboard-monitor && npm run build && cd ../../device-macos/camera && npm run build && cd ../../packages/detector-pipeline && npm run build",
+    "build:phase2": "cd packages/core && npm run build:runtime",
+    "build:phase3": "cd packages/bridge && npm run build && cd ../../material-chat && npm run build && cd ../packages/ausm && npm run build",
+    "pack:check": "npm pack --dry-run --workspaces"
+  },
+  "dependencies": {
+    "node-gyp-build": "^4.8.4"
+  },
+  "devDependencies": {
+    "typescript": "^5.3.0"
+  },
+  "author": "Timeless",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/timeless/ausm.git"
+  }
+}

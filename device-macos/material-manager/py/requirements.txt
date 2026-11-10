@@ -1,0 +1,8 @@
+# Python worker (py/frame_reader.py) dependencies. Python >= 3.9.
+# The worker also needs the `screen_stream_reader` package, which ships with
+# @ausm/device-macos-screen-stream (python/screen-stream-reader) and is put on
+# PYTHONPATH via MaterialManagerConfig.screenStreamReaderPath.
+numpy>=1.20.0
+# Headless build: the worker never opens a window. If you already have the
+# full `opencv-python` installed, that works too (do not install both).
+opencv-python-headless>=4.5.0

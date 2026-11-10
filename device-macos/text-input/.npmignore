@@ -1,0 +1,4 @@
+swift/.build
+examples
+tsconfig.json
+tsup.config.ts

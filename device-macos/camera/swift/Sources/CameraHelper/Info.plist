@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>CFBundleIdentifier</key>
+    <string>com.ausm.camera-helper</string>
+    <key>CFBundleName</key>
+    <string>CameraHelper</string>
+    <key>CFBundleVersion</key>
+    <string>0.1.0</string>
+    <key>NSCameraUsageDescription</key>
+    <string>AUSM captures the camera to stream frames for activity understanding.</string>
+</dict>
+</plist>

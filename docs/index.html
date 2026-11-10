@@ -1,0 +1,1991 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="description" content="AUSM turns macOS activity into typed events, tracks the materials you work with, and detects tasks.">
+<!-- The agent skill shown on this page is embedded from skills/ausm/SKILL.md.
+     After editing that file, run: node scripts/sync-docs-skill.mjs -->
+<title>AUSM</title>
+<script>(function () { var t = "light"; try { t = localStorage.getItem("ausm-theme") || "light"; } catch (e) {} document.documentElement.setAttribute("data-theme", t); })();</script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+/* Layout: centered hero (headline, one install line, link row), the live demo as the visual, an animated four-step diagram, quick start, agents. */
+:root {
+  --bg: #fbfbfc; --fg: #1d1d1f; --fg2: #6e6e73; --fg3: #a1a1a6;
+  --fill: rgba(0,0,0,.045); --fill2: rgba(0,0,0,.075); --fill-lite: rgba(0,0,0,.022); --hl: rgba(0,0,0,.08);
+  --screen: rgba(0,0,0,.035); --win: #ffffff;
+  --font: "Barlow", "Helvetica Neue", Arial, sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #111113; --fg: #f2f2f4; --fg2: #a1a1a6; --fg3: #6e6e73;
+  --fill: rgba(255,255,255,.06); --fill2: rgba(255,255,255,.1); --fill-lite: rgba(255,255,255,.03); --hl: rgba(255,255,255,.12);
+  --screen: rgba(255,255,255,.04); --win: #1f2023; color-scheme: dark; } }
+:root[data-theme="dark"] {
+  --bg: #111113; --fg: #f2f2f4; --fg2: #a1a1a6; --fg3: #6e6e73;
+  --fill: rgba(255,255,255,.06); --fill2: rgba(255,255,255,.1); --fill-lite: rgba(255,255,255,.03); --hl: rgba(255,255,255,.12);
+  --screen: rgba(255,255,255,.04); --win: #1f2023; color-scheme: dark; }
+
+* { box-sizing: border-box; scrollbar-width: none; }
+*::-webkit-scrollbar { display: none; width: 0; height: 0; }
+html { scrollbar-width: none; }
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
+body { margin: 0; background: var(--bg); color: var(--fg); font-family: var(--font); font-size: 17px; line-height: 1.55; -webkit-font-smoothing: antialiased; }
+body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-area-inset-top, 0px); z-index: 30; background: var(--bg); }
+.wrap { max-width: 1080px; margin: 0 auto; padding-left: max(20px, env(safe-area-inset-left, 0px)); padding-right: max(20px, env(safe-area-inset-right, 0px)); }
+a { color: inherit; text-decoration: none; }
+button { font: inherit; color: inherit; }
+code { font-family: var(--mono); font-size: .88em; }
+:focus-visible { outline: 2px solid var(--fg); outline-offset: 3px; border-radius: 4px; }
+
+/* header */
+header.top { position: sticky; top: env(safe-area-inset-top, 0px); z-index: 20; background: color-mix(in srgb, var(--bg) 80%, transparent); backdrop-filter: saturate(1.4) blur(16px); -webkit-backdrop-filter: saturate(1.4) blur(16px); }
+.top-inner { display: flex; align-items: center; height: 56px; gap: 28px; }
+.brand { font-weight: 700; font-size: 17px; letter-spacing: .02em; }
+.nav { margin-left: auto; display: flex; align-items: center; gap: 24px; font-size: 15px; }
+.nav button, .nav a { all: unset; cursor: pointer; color: var(--fg2); transition: color .2s; }
+.nav button:hover, .nav a:hover, .nav [aria-current="page"] { color: var(--fg); }
+@media (max-width: 480px) { .nav { gap: 16px; font-size: 14px; } .nav a { display: none; } }
+.nav .theme { display: grid; place-items: center; width: 28px; height: 28px; margin: -4px -6px -4px -8px; border-radius: 50%; }
+.nav .theme:hover { background: var(--fill); }
+.theme svg { fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; }
+.theme .moon { display: none; }
+:root[data-theme="dark"] .theme .sun { display: none; }
+:root[data-theme="dark"] .theme .moon { display: inline; }
+
+/* hero */
+.hero { text-align: center; padding-block: 88px 44px; }
+.eyebrow { margin: 0 0 14px; font-size: 14px; font-weight: 500; color: var(--fg3); letter-spacing: .02em; }
+h1 { margin: 0 auto; font-size: clamp(30px, 4.6vw, 48px); line-height: 1.08; letter-spacing: -.035em; font-weight: 700; text-wrap: balance; }
+.sub { margin: 18px auto 0; max-width: 34ch; font-size: clamp(18px, 2.1vw, 21px); color: var(--fg2); text-wrap: balance; }
+.install { margin: 32px auto 0; display: inline-flex; flex-direction: column; align-items: stretch; gap: 8px; max-width: 100%; }
+.seg { display: inline-flex; align-self: center; padding: 3px; gap: 2px; border-radius: 999px; background: var(--fill); }
+.seg button { all: unset; cursor: pointer; font-size: 13px; font-weight: 500; padding: 4px 14px; border-radius: 999px; color: var(--fg2); }
+.seg button[aria-selected="true"] { background: var(--win); color: var(--fg); box-shadow: 0 1px 3px rgba(0,0,0,.08); }
+.cmd { display: flex; align-items: center; gap: 14px; padding: 12px 12px 12px 20px; border-radius: 14px; background: var(--fill); font-family: var(--mono); font-size: 14.5px; text-align: left; max-width: 100%; }
+.cmd code { font-size: inherit; white-space: nowrap; overflow-x: auto; scrollbar-width: none; min-width: 0; }
+.cmd code::before { content: "$ "; color: var(--fg3); }
+.cmd code.noprompt::before { content: ""; }
+.copy { all: unset; cursor: pointer; flex-shrink: 0; font-family: var(--font); font-size: 13px; color: var(--fg2); padding: 3px 10px; border-radius: 8px; }
+.copy:hover { background: var(--fill2); color: var(--fg); }
+.links { margin-top: 22px; display: flex; justify-content: center; flex-wrap: wrap; gap: 6px 22px; font-size: 15px; color: var(--fg2); }
+.links a:hover, .links button:hover { color: var(--fg); }
+.links button { all: unset; cursor: pointer; }
+
+/* demo */
+.demo { padding-bottom: 96px; }
+.cap { text-align: center; font-size: 15px; color: var(--fg2); margin: 0 0 18px; }
+.demo-grid { display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr); gap: 28px; }
+@media (max-width: 880px) { .demo-grid { grid-template-columns: minmax(0, 1fr); } }
+.screen { position: relative; width: 100%; align-self: start; aspect-ratio: 16 / 10.5; min-height: 330px; border-radius: 20px; background: var(--screen); overflow: hidden; user-select: none; -webkit-user-select: none; touch-action: manipulation; }
+.menubar { position: absolute; inset: 0 0 auto; height: 28px; display: flex; align-items: center; gap: 14px; padding: 0 14px; font-size: 12.5px; color: var(--fg2); z-index: 5; }
+.menubar b { color: var(--fg); font-weight: 600; }
+.menubar .sp { flex: 1; }
+.pill { all: unset; cursor: pointer; font-size: 11.5px; padding: 2px 9px; border-radius: 6px; background: var(--fill); color: var(--fg); }
+.pill:hover { background: var(--fill2); }
+.win { position: absolute; border-radius: 12px; background: var(--win); box-shadow: 0 1px 2px rgba(0,0,0,.05), 0 14px 36px rgba(0,0,0,.09); display: flex; flex-direction: column; overflow: hidden; }
+.win.dim { box-shadow: 0 1px 2px rgba(0,0,0,.04), 0 6px 18px rgba(0,0,0,.05); }
+.win-bar { display: flex; align-items: center; gap: 8px; height: 30px; padding: 0 12px; font-size: 12px; color: var(--fg2); flex-shrink: 0; }
+.win.dim .win-bar { color: var(--fg3); }
+.dots { display: flex; gap: 5px; margin-right: 4px; }
+.dots i { width: 8px; height: 8px; border-radius: 50%; background: var(--fill2); }
+.win:not(.dim) .dots i { background: var(--fg3); }
+.win-title { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.win-bar .pill { margin-left: auto; }
+.stabs { display: flex; gap: 3px; min-width: 0; }
+.stab { all: unset; cursor: pointer; font-size: 11.5px; padding: 2px 9px; border-radius: 6px; color: var(--fg3); white-space: nowrap; transition: background .25s, color .25s; }
+.stab[aria-selected="true"] { background: var(--fill); color: var(--fg); }
+.stab:hover { color: var(--fg); }
+.win-body { padding: 4px 16px 12px; font-size: 13px; line-height: 1.55; overflow: hidden; flex: 1; min-height: 0; }
+.win-body h4 { margin: 0 0 6px; font-size: 14px; font-weight: 600; }
+.win-body p { margin: 0 0 6px; }
+.win-body .muted { color: var(--fg3); font-size: 12px; }
+.sel { user-select: text; -webkit-user-select: text; cursor: text; }
+.sel::selection, .sel *::selection { background: var(--hl); }
+#w-notes { left: 4%; top: 14%; width: 54%; height: 72%; }
+#w-safari { left: 41%; top: 25%; width: 55%; height: 68%; }
+.note-in { margin-top: 8px; width: 100%; font: inherit; font-size: 13px; color: var(--fg); background: var(--fill); border: 0; border-radius: 7px; padding: 5px 9px; outline: none; user-select: text; -webkit-user-select: text; }
+.note-in:focus { background: var(--fill2); }
+.note-in::placeholder { color: var(--fg3); }
+.shot-layer { position: absolute; inset: 0; z-index: 10; cursor: crosshair; }
+.shot-hint { position: absolute; left: 50%; top: 42px; transform: translateX(-50%); font-size: 12px; padding: 4px 11px; border-radius: 8px; background: var(--fg); color: var(--bg); white-space: nowrap; }
+.shot-rect { position: absolute; border-radius: 2px; background: rgba(120,130,145,.16); outline: 1px solid rgba(110,115,125,.45); }
+.shot-rect span { position: absolute; right: 0; bottom: -22px; font-family: var(--mono); font-size: 10.5px; padding: 1px 6px; background: var(--fg); color: var(--bg); border-radius: 4px; white-space: nowrap; }
+.cursor { position: absolute; left: 0; top: 0; z-index: 14; pointer-events: none; margin: -3px 0 0 -4px; opacity: 0; transition: opacity .35s ease; filter: drop-shadow(0 1px 1.5px rgba(0,0,0,.25)) drop-shadow(0 3px 6px rgba(0,0,0,.12)); will-change: transform; }
+.cursor.on { opacity: 1; }
+.cursor.on.held { opacity: .35; }
+.cursor path { fill: #1d1d1f; stroke: #fff; stroke-width: 1.4; stroke-linejoin: round; transform-origin: 5px 4px; transition: transform .14s cubic-bezier(.34,1.56,.64,1); }
+.ripple { position: absolute; z-index: 13; width: 26px; height: 26px; margin: -13px 0 0 -13px; border-radius: 50%; background: rgba(0,0,0,.14); pointer-events: none; }
+.key { position: absolute; left: 50%; bottom: 52px; z-index: 13; transform: translate(-50%, 6px); padding: 5px 12px; border-radius: 9px; background: var(--fg); color: var(--bg); font-size: 13px; font-weight: 500; letter-spacing: .04em; opacity: 0; pointer-events: none; transition: opacity .2s ease, transform .35s cubic-bezier(.22,1,.36,1); }
+.key.on { opacity: .92; transform: translate(-50%, 0); }
+.ctl { position: absolute; right: 12px; bottom: 12px; z-index: 15; display: flex; align-items: center; gap: 6px; padding: 4px; border-radius: 999px; background: color-mix(in srgb, var(--win) 80%, transparent); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); box-shadow: 0 1px 2px rgba(0,0,0,.06), 0 4px 14px rgba(0,0,0,.06); }
+.ctl-b { all: unset; cursor: pointer; width: 26px; height: 26px; display: grid; place-items: center; border-radius: 50%; color: var(--fg); }
+.ctl-b:hover { background: var(--fill); }
+.ctl-b svg path { fill: currentColor; }
+.ctl-b .i-play { display: none; }
+.ctl.paused .i-play { display: inline; }
+.ctl.paused .i-pause { display: none; }
+.ctl-seg { display: flex; gap: 2px; }
+.ctl-seg button { all: unset; cursor: pointer; font-size: 11.5px; font-variant-numeric: tabular-nums; padding: 4px 8px; border-radius: 999px; color: var(--fg3); transition: background .2s, color .2s; }
+.ctl-seg button:hover { color: var(--fg); }
+.ctl-seg button[aria-pressed="true"] { background: var(--fill2); color: var(--fg); }
+.tag { display: inline-block; vertical-align: 1px; margin-right: 5px; padding: 0 6px; border-radius: 5px; background: var(--fill2); color: var(--fg2); font-size: 10.5px; font-weight: 500; line-height: 17px; letter-spacing: .01em; }
+.card.fresh .tag { background: var(--fill); color: var(--fg); }
+.flash { position: absolute; inset: 0; background: #fff; opacity: 0; pointer-events: none; z-index: 11; }
+.flash.go { animation: flash .35s ease-out; }
+@keyframes flash { from { opacity: .7; } to { opacity: 0; } }
+
+.demo-grid { align-items: stretch; }
+.stream { position: relative; min-width: 0; }
+.lanes { position: absolute; inset: 0; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.3fr) minmax(0, 1fr); gap: 12px; }
+@media (max-width: 880px) { .stream { height: 360px; } }
+.lane { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
+.lane-h { font-size: 12px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--fg2); padding: 0 2px 12px; }
+.lane-h span { display: block; margin-top: 2px; font-size: 12.5px; font-weight: 400; letter-spacing: 0; text-transform: none; color: var(--fg3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cap { transition: opacity .3s; }
+.lane-list { list-style: none; margin: 0 -8px; padding: 2px 8px 12px; display: flex; flex-direction: column; gap: 8px; overflow-y: auto; min-height: 0; flex: 1;
+  -webkit-mask-image: linear-gradient(#000 78%, transparent); mask-image: linear-gradient(#000 78%, transparent); }
+.card { all: unset; box-sizing: border-box; display: block; width: 100%; cursor: pointer; padding: 9px 11px; border-radius: 12px; background: var(--fill); box-shadow: 0 0 0 rgba(0,0,0,0); transition: background 1.4s cubic-bezier(.22,1,.36,1), box-shadow 1.4s cubic-bezier(.22,1,.36,1); will-change: transform; }
+.card.fresh { background: var(--win); box-shadow: 0 1px 2px rgba(0,0,0,.05), 0 6px 18px rgba(0,0,0,.07); transition: background .25s ease, box-shadow .25s ease; }
+.card:hover, .card[aria-pressed="true"] { background: var(--fill2); transition: background .2s ease; }
+.card.fresh:hover { background: var(--win); }
+.card .card-k { transition: color 1.4s ease; }
+.card.fresh .card-k { color: var(--fg2); }
+.card-k { display: block; font-family: var(--mono); font-size: 10.5px; color: var(--fg3); margin-bottom: 2px; }
+.card-s { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; font-size: 13px; line-height: 1.35; color: var(--fg); overflow-wrap: anywhere; }
+.card.thinking .card-s { color: var(--fg3); }
+.tree { display: flex; flex-direction: column; gap: 8px; overflow-y: auto; min-height: 0; flex: 1; margin: 0 -8px; padding: 2px 8px 12px; -webkit-mask-image: linear-gradient(#000 82%, transparent); mask-image: linear-gradient(#000 82%, transparent); }
+.grp { border-radius: 14px; background: var(--fill-lite); padding: 9px 10px; }
+.grp-h { display: flex; align-items: baseline; gap: 6px; font-size: 11.5px; color: var(--fg3); white-space: nowrap; min-width: 0; }
+.grp-h b { font-size: 12.5px; font-weight: 600; color: var(--fg); }
+.grp-h .w { overflow: hidden; text-overflow: ellipsis; }
+.grp-sub { display: grid; grid-template-rows: 1fr; transition: grid-template-rows .45s cubic-bezier(.22,1,.36,1), opacity .3s ease; }
+.grp-sub > div { overflow: hidden; min-height: 0; font-size: 11.5px; color: var(--fg3); white-space: nowrap; text-overflow: ellipsis; padding-top: 2px; }
+.grp.open .grp-sub { grid-template-rows: 0fr; opacity: 0; }
+.grp-body { display: grid; grid-template-rows: 0fr; opacity: 0; transition: grid-template-rows .5s cubic-bezier(.22,1,.36,1), opacity .35s ease; }
+.grp.open .grp-body { grid-template-rows: 1fr; opacity: 1; }
+.grp-in { overflow: hidden; min-height: 0; display: flex; flex-direction: column; gap: 6px; }
+.grp-in::before { content: ""; display: block; height: 2px; }
+.mrow { all: unset; box-sizing: border-box; display: block; width: 100%; cursor: pointer; padding: 7px 9px; border-radius: 10px; background: var(--fill); transition: background 1.2s cubic-bezier(.22,1,.36,1), box-shadow 1.2s cubic-bezier(.22,1,.36,1); }
+.mrow.on { background: var(--win); box-shadow: 0 1px 2px rgba(0,0,0,.05), 0 6px 18px rgba(0,0,0,.07); transition-duration: .3s; }
+.mrow:hover { background: var(--fill2); transition-duration: .2s; }
+.mrow.on:hover { background: var(--win); }
+.mrow-t { display: block; font-size: 13px; line-height: 1.3; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mrow-m { display: block; margin-top: 2px; font-size: 11px; color: var(--fg3); font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mrow-m i { font-style: normal; display: inline-block; transition: color .6s; }
+.mrow-m i.bump { color: var(--fg); transition: none; }
+.pop { position: fixed; left: 0; top: 0; z-index: 40; width: min(340px, calc(100vw - 32px)); max-height: min(380px, calc(100vh - 32px)); overflow: auto; padding: 12px 14px 14px; border-radius: 14px; background: var(--win); box-shadow: 0 1px 2px rgba(0,0,0,.06), 0 16px 40px rgba(0,0,0,.14); pointer-events: none; opacity: 0; transition: opacity .18s ease; will-change: transform; }
+.pop.on { opacity: 1; }
+.pop-body { transition: opacity .18s ease, transform .28s cubic-bezier(.22,1,.36,1); }
+.pop-body.swap { opacity: .2; transform: translateY(3px); transition: none; }
+.pop.pinned { pointer-events: auto; }
+.pop-m { display: block; font-size: 11.5px; color: var(--fg3); margin-bottom: 6px; }
+.pop pre { margin: 0; font-family: var(--mono); font-size: 12px; line-height: 1.55; white-space: pre; color: var(--fg); }
+.pop .v { color: var(--fg2); }
+
+/* blocks */
+.block { padding-bottom: 96px; }
+.block h2 { margin: 0 0 6px; font-size: clamp(28px, 3.6vw, 36px); line-height: 1.12; letter-spacing: -.025em; font-weight: 700; text-wrap: balance; }
+.block .lead { margin: 0 0 26px; color: var(--fg2); font-size: 18px; max-width: 46ch; }
+.code-tabs { display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; }
+.code-tabs .seg { align-self: start; justify-self: center; }
+pre.code { margin: 0; padding: 18px 20px; border-radius: 16px; background: var(--fill); font-family: var(--mono); font-size: 13.5px; line-height: 1.65; overflow-x: auto; }
+pre.code .c { color: var(--fg3); }
+pre.code .s { color: var(--fg2); }
+.out { font-family: var(--mono); font-size: 13px; color: var(--fg2); padding: 0 20px; white-space: pre; overflow-x: auto; }
+.out::before { content: "→ "; color: var(--fg3); }
+
+.agents { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 40px; align-items: start; }
+@media (max-width: 860px) { .agents { grid-template-columns: minmax(0, 1fr); gap: 20px; } }
+.agents .cmd { margin-bottom: 10px; }
+.prompts { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
+.prompts li { padding: 14px 18px; border-radius: 14px; background: var(--fill); font-size: 15.5px; line-height: 1.45; }
+.small { font-size: 14px; color: var(--fg2); margin: 12px 0 0; }
+.small button { all: unset; cursor: pointer; color: var(--fg); }
+
+/* skill view */
+.skill-hero { text-align: center; padding-block: 72px 32px; }
+.skill-hero h1 { font-size: clamp(30px, 4.6vw, 48px); }
+.skill-hero .install { margin-top: 26px; }
+.file { border-radius: 18px; background: var(--fill); overflow: hidden; margin-bottom: 96px; }
+.file-head { display: flex; align-items: center; gap: 12px; padding: 14px 16px 6px 22px; font-family: var(--mono); font-size: 13px; color: var(--fg2); }
+.file-head .copy { margin-left: auto; }
+.file-body { overflow: auto; max-height: 76vh; }
+.md { margin: 0; padding: 8px 0 18px; font-family: var(--mono); font-size: 13px; line-height: 1.7; counter-reset: ln; }
+.md .l { display: block; padding: 0 22px 0 62px; position: relative; white-space: pre; min-height: 1.7em; }
+.md .l::before { counter-increment: ln; content: counter(ln); position: absolute; left: 0; width: 42px; text-align: right; color: var(--fg3); font-variant-numeric: tabular-nums; }
+.md .h { font-weight: 600; }
+.md .d { color: var(--fg3); }
+.md .i { color: var(--fg2); }
+
+footer { padding-block: 0 56px; display: flex; flex-wrap: wrap; justify-content: center; gap: 6px 22px; font-size: 14px; color: var(--fg3); }
+footer a:hover { color: var(--fg); }
+[hidden] { display: none !important; }
+
+/* docs */
+.docs { display: grid; grid-template-columns: 168px minmax(0, 1fr); gap: 56px; padding-block: 56px 40px; }
+.dnav { position: sticky; top: 80px; align-self: start; display: flex; flex-direction: column; gap: 2px; }
+.dnav a { display: flex; align-items: baseline; gap: 10px; padding: 7px 12px; border-radius: 10px; font-size: 15px; color: var(--fg2); transition: background .2s, color .2s; white-space: nowrap; }
+.dnav a:hover { color: var(--fg); }
+.dnav a[aria-current="page"] { background: var(--fill); color: var(--fg); }
+.dnav a i { font-style: normal; font-family: var(--mono); font-size: 11px; color: var(--fg3); }
+@media (max-width: 820px) {
+  .docs { grid-template-columns: minmax(0, 1fr); gap: 8px; padding-top: 12px; }
+  .dnav { top: 56px; z-index: 6; flex-direction: row; overflow-x: auto; margin: 0 -20px; padding: 8px 20px; background: color-mix(in srgb, var(--bg) 88%, transparent); backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); }
+  .dnav a i { display: none; }
+}
+.dpage { min-width: 0; max-width: 820px; }
+.dpage[hidden] { display: none; }
+.dpage .eyebrow { text-align: left; }
+.dpage h1 { margin: 0; text-align: left; font-size: clamp(32px, 4.4vw, 44px); }
+.dpage .sub { margin: 12px 0 0; max-width: 44ch; text-align: left; text-wrap: pretty; }
+.dpage h3 { margin: 56px 0 4px; font-size: 21px; letter-spacing: -.015em; font-weight: 600; }
+.dpage h3 + .hint { margin: 0 0 16px; font-size: 15px; color: var(--fg2); }
+.fig { margin-top: 28px; padding: 20px; border-radius: 20px; background: var(--fill-lite); }
+.dpage h3 + .hint + .fig { margin-top: 0; }
+.fig-cap { margin: 14px 2px 0; font-size: 13px; color: var(--fg3); }
+.facts { margin-top: 12px; display: grid; grid-template-columns: repeat(auto-fill, minmax(176px, 1fr)); gap: 8px; }
+.fact { padding: 10px 14px; border-radius: 12px; background: var(--fill); }
+.fact b { display: block; font-size: 12px; font-weight: 500; color: var(--fg3); }
+.fact span { font-size: 15px; }
+.fact code { font-size: 13px; }
+.dnext { margin-top: 72px; display: flex; justify-content: flex-end; }
+.dnext a { display: inline-flex; flex-direction: column; align-items: flex-end; padding: 12px 18px; border-radius: 14px; background: var(--fill); font-size: 16px; font-weight: 500; transition: background .2s; }
+.dnext a:hover { background: var(--fill2); }
+.dnext a small { font-size: 12px; font-weight: 400; color: var(--fg3); }
+.chip { all: unset; cursor: pointer; box-sizing: border-box; font-size: 13px; padding: 5px 11px; border-radius: 999px; background: var(--fill); color: var(--fg2); transition: background .2s, color .2s; }
+.chip:hover { color: var(--fg); }
+.chip[aria-pressed="true"], .chip[aria-selected="true"] { background: var(--win); color: var(--fg); box-shadow: 0 1px 3px rgba(0,0,0,.08); }
+.lane-h a { color: inherit; transition: color .2s; }
+.lane-h a:hover { color: var(--fg); }
+.lane-h a::after { content: " ›"; color: var(--fg3); }
+
+/* sensors */
+.sx { display: grid; grid-template-columns: 190px minmax(0, 1fr); gap: 18px; }
+@media (max-width: 640px) { .sx { grid-template-columns: minmax(0, 1fr); } }
+.sx-list { display: flex; flex-direction: column; gap: 3px; }
+@media (max-width: 640px) { .sx-list { flex-direction: row; flex-wrap: wrap; gap: 6px; } }
+.sx-b { all: unset; cursor: pointer; box-sizing: border-box; display: flex; align-items: center; gap: 8px; padding: 7px 11px; border-radius: 10px; font-size: 14.5px; color: var(--fg2); transition: background .2s, color .2s; }
+.sx-b:hover { color: var(--fg); }
+.sx-b[aria-selected="true"] { background: var(--win); color: var(--fg); box-shadow: 0 1px 2px rgba(0,0,0,.05), 0 4px 12px rgba(0,0,0,.05); }
+.sx-b .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--fill2); flex-shrink: 0; }
+.sx-b .dot.on { background: var(--fg); }
+@media (max-width: 640px) { .sx-b { background: var(--fill); padding: 5px 11px; font-size: 13.5px; } }
+.sx-main { min-width: 0; }
+.flow { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 18px; position: relative; }
+@media (max-width: 640px) { .flow { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.fnode { position: relative; padding: 10px 12px; border-radius: 12px; background: var(--win); box-shadow: 0 1px 2px rgba(0,0,0,.04); min-width: 0; }
+.fnode b { display: block; font-size: 11px; font-weight: 500; color: var(--fg3); letter-spacing: .02em; }
+.fnode span { display: block; font-size: 13px; line-height: 1.35; overflow-wrap: anywhere; }
+.fnode span code { font-size: 12px; }
+.fnode:not(:last-child)::after { content: ""; position: absolute; right: -14px; top: 50%; width: 10px; height: 2px; border-radius: 2px; background: var(--fill2); }
+@media (max-width: 640px) { .fnode:nth-child(2)::after { display: none; } }
+.fnode.lit { animation: lift .9s cubic-bezier(.22,1,.36,1) both; animation-delay: var(--d, 0ms); }
+.fnode.lit span { animation: textin .55s cubic-bezier(.22,1,.36,1) both; animation-delay: var(--d, 0ms); }
+.fnode.lit:not(:last-child)::after { transform-origin: left center; animation: wire .45s cubic-bezier(.22,1,.36,1) both; animation-delay: calc(var(--d, 0ms) + 120ms); }
+@keyframes lift { 0%, 100% { transform: none; box-shadow: 0 1px 2px rgba(0,0,0,.04); } 40% { transform: translateY(-2px); box-shadow: 0 1px 2px rgba(0,0,0,.04), 0 8px 18px rgba(0,0,0,.07); } }
+@keyframes textin { from { opacity: 0; transform: translateY(3px); filter: blur(2px); } to { opacity: 1; transform: none; filter: none; } }
+@keyframes wire { from { transform: scaleX(0); } to { transform: scaleX(1); } }
+.sx-meta { margin-top: 14px; display: flex; flex-wrap: wrap; gap: 6px; }
+.sx-meta span { font-size: 12.5px; padding: 3px 10px; border-radius: 8px; background: var(--fill); color: var(--fg2); }
+.sx-meta span b { font-weight: 500; color: var(--fg); }
+.sx-json { margin: 12px 0 0; padding: 14px 16px; border-radius: 14px; background: var(--win); font-family: var(--mono); font-size: 12.5px; line-height: 1.6; overflow-x: auto; white-space: pre; min-height: 9.6em; }
+.sx-json .v { color: var(--fg2); }
+.sx-json.swap { animation: swapin .35s cubic-bezier(.22,1,.36,1); }
+@keyframes swapin { from { opacity: .2; transform: translateY(3px); } to { opacity: 1; transform: none; } }
+
+/* materials: identity */
+.idm { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr); gap: 20px; align-items: center; }
+@media (max-width: 700px) { .idm { grid-template-columns: minmax(0, 1fr); } }
+.mwin { border-radius: 12px; background: var(--win); box-shadow: 0 1px 2px rgba(0,0,0,.05), 0 10px 28px rgba(0,0,0,.07); overflow: hidden; }
+.mwin + .mwin { margin-top: 10px; }
+.mwin .win-bar { height: 32px; }
+.mwin .stabs { margin-left: 4px; }
+.mwin-b { padding: 8px 14px 14px; display: flex; flex-direction: column; gap: 6px; }
+.mwin-b i { display: block; height: 7px; border-radius: 4px; background: var(--fill); }
+.mwin-b i:nth-child(2) { width: 82%; } .mwin-b i:nth-child(3) { width: 64%; }
+.mwin.ghost { opacity: 0; transform: translateY(-6px); max-height: 0; margin-top: 0; transition: opacity .35s ease, transform .45s cubic-bezier(.22,1,.36,1), max-height .45s cubic-bezier(.22,1,.36,1), margin .45s; }
+.mwin.ghost.show { opacity: 1; transform: none; max-height: 120px; margin-top: 10px; }
+.idrec { display: flex; flex-direction: column; gap: 6px; }
+.idrow { display: grid; grid-template-columns: 92px minmax(0, 1fr); gap: 10px; align-items: baseline; font-size: 13px; }
+.idrow b { font-weight: 500; color: var(--fg3); font-size: 12px; }
+.idrow code { font-size: 12.5px; overflow-wrap: anywhere; transition: color .6s; }
+.idrow code.bump { color: var(--fg3); transition: none; }
+.idrow.idkey code { font-size: 15px; font-weight: 500; }
+.idf { margin-top: 10px; font-family: var(--mono); font-size: 11.5px; color: var(--fg3); }
+.idbtns { margin-top: 14px; display: flex; flex-wrap: wrap; gap: 6px; }
+
+/* materials: frames */
+.fr-top { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; font-size: 13.5px; color: var(--fg2); }
+.fr-top input[type=range] { flex: 1; min-width: 140px; }
+.bars { margin-top: 16px; position: relative; height: 128px; display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); gap: 2px; align-items: end; }
+.bar { position: relative; height: 100%; display: flex; align-items: flex-end; justify-content: center; cursor: default; }
+.bar i { display: block; width: 62%; max-width: 22px; min-height: 2px; border-radius: 4px 4px 0 0; background: var(--fill2); transition: height .5s cubic-bezier(.22,1,.36,1), background .3s; }
+.bar.keep i { background: var(--fg); }
+.thr { position: absolute; left: 0; right: 0; height: 0; border-top: 1px dashed var(--fg3); transition: bottom .3s cubic-bezier(.22,1,.36,1); pointer-events: none; }
+.thr span { position: absolute; left: 0; top: -17px; font-family: var(--mono); font-size: 10.5px; color: var(--fg3); }
+.bar-l { margin-top: 6px; display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); gap: 2px; font-family: var(--mono); font-size: 9.5px; color: var(--fg3); text-align: center; }
+.bar-l span { overflow: hidden; text-overflow: clip; white-space: nowrap; }
+.strip { margin-top: 18px; display: flex; gap: 6px; flex-wrap: wrap; min-height: 46px; }
+.thumb { width: 56px; height: 40px; border-radius: 6px; background: var(--win); box-shadow: 0 1px 2px rgba(0,0,0,.06); padding: 5px; display: flex; flex-direction: column; gap: 3px; overflow: hidden; animation: swapin .4s cubic-bezier(.22,1,.36,1) both; }
+.thumb i { display: block; height: 3px; border-radius: 2px; background: var(--fill2); flex-shrink: 0; }
+.ftip { position: absolute; z-index: 3; transform: translate(-50%, -100%); padding: 5px 9px; border-radius: 8px; background: var(--fg); color: var(--bg); font-size: 11.5px; white-space: nowrap; pointer-events: none; opacity: 0; transition: opacity .15s; }
+.ftip.on { opacity: 1; }
+.extr { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 10px; }
+.extr div { padding: 12px 14px; border-radius: 14px; background: var(--fill); }
+.extr b { display: block; font-size: 14px; font-weight: 600; margin-bottom: 4px; }
+.extr pre { margin: 0; font-family: var(--mono); font-size: 12px; line-height: 1.6; color: var(--fg2); white-space: pre-wrap; overflow-wrap: anywhere; }
+
+/* memory: schema */
+.erd { position: relative; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr); gap: 14px 44px; align-items: start; }
+@media (max-width: 720px) { .erd { grid-template-columns: minmax(0, 1fr); gap: 8px; } .erd svg { display: none; } }
+.erd svg { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; overflow: visible; }
+.erd svg path { fill: none; stroke: var(--fill2); stroke-width: 2; transition: stroke .3s; }
+.erd svg path.on { stroke: var(--fg3); }
+.ecol { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.tb { all: unset; cursor: pointer; box-sizing: border-box; position: relative; z-index: 1; display: block; width: 100%; padding: 10px 12px; border-radius: 12px; background: var(--win); box-shadow: 0 1px 2px rgba(0,0,0,.05); transition: opacity .3s, box-shadow .3s; }
+.tb:hover { box-shadow: 0 1px 2px rgba(0,0,0,.05), 0 6px 16px rgba(0,0,0,.07); }
+.tb b { display: block; font-family: var(--mono); font-size: 12.5px; font-weight: 500; }
+.tb small { display: block; font-size: 12px; color: var(--fg3); margin-top: 1px; }
+.erd.focus .tb { opacity: .45; }
+.erd.focus .tb.on, .erd.focus .tb.rel { opacity: 1; }
+.tb.on { box-shadow: 0 0 0 2px var(--fg), 0 6px 16px rgba(0,0,0,.07); }
+.ecap { font-size: 12px; font-weight: 500; color: var(--fg3); letter-spacing: .04em; text-transform: uppercase; margin: 2px 2px -2px; }
+.tdetail { margin-top: 16px; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr); gap: 18px; padding: 14px 16px; border-radius: 14px; background: var(--win); }
+@media (max-width: 720px) { .tdetail { grid-template-columns: minmax(0, 1fr); } }
+.tdetail h4 { margin: 0 0 4px; font-family: var(--mono); font-size: 14px; font-weight: 500; }
+.tdetail p { margin: 0; font-size: 14px; color: var(--fg2); }
+.cols { margin: 0; padding: 0; list-style: none; columns: 2; column-gap: 18px; font-family: var(--mono); font-size: 12px; line-height: 1.75; }
+.cols li { break-inside: avoid; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cols li em { font-style: normal; font-size: 10px; padding: 0 4px; margin-left: 4px; border-radius: 4px; background: var(--fill2); color: var(--fg2); }
+.tdetail.swap > * { animation: swapin .35s cubic-bezier(.22,1,.36,1); }
+
+/* memory: decay */
+.dc-top { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; font-size: 13.5px; color: var(--fg2); }
+.dc-top input[type=range] { flex: 1; min-width: 140px; }
+.dc-top output, .fr-top output { font-family: var(--font); font-size: 13.5px; font-weight: 500; font-variant-numeric: tabular-nums; color: var(--fg); min-width: 4.2em; text-align: right; }
+.dpage input[type=range] { -webkit-appearance: none; appearance: none; height: 24px; margin: 0; background: transparent; cursor: pointer; --p: 50%; }
+.dpage input[type=range]:focus { outline: none; }
+.dpage input[type=range]::-webkit-slider-runnable-track { height: 4px; border-radius: 4px; background: linear-gradient(var(--fg3), var(--fg3)) 0 / var(--p) 100% no-repeat, var(--fill2); }
+.dpage input[type=range]::-moz-range-track { height: 4px; border-radius: 4px; background: var(--fill2); }
+.dpage input[type=range]::-moz-range-progress { height: 4px; border-radius: 4px; background: var(--fg3); }
+.dpage input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 20px; height: 20px; margin-top: -8px; border-radius: 50%; background: #fff; box-shadow: 0 0 0 .5px rgba(0,0,0,.1), 0 1px 3px rgba(0,0,0,.16), 0 4px 10px rgba(0,0,0,.08); transition: transform .18s cubic-bezier(.34,1.56,.64,1); }
+.dpage input[type=range]::-moz-range-thumb { width: 20px; height: 20px; border: 0; border-radius: 50%; background: #fff; box-shadow: 0 0 0 .5px rgba(0,0,0,.1), 0 1px 3px rgba(0,0,0,.16), 0 4px 10px rgba(0,0,0,.08); }
+.dpage input[type=range]:active::-webkit-slider-thumb { transform: scale(1.12); }
+.dpage input[type=range]:focus-visible::-webkit-slider-thumb { box-shadow: 0 0 0 2px var(--fg), 0 1px 3px rgba(0,0,0,.16); }
+.dc { position: relative; margin-top: 10px; }
+.dc svg { display: block; width: 100%; height: 190px; overflow: visible; }
+.dc .ax { stroke: var(--fill2); stroke-width: 1; }
+.dc .grid { stroke: var(--fill); stroke-width: 1; }
+.dc .ln { fill: none; stroke: var(--fg); stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
+.dc .area { fill: var(--fill); }
+.dc .tk { font-family: var(--mono); font-size: 10.5px; fill: var(--fg3); }
+.dc .cross { stroke: var(--fg3); stroke-width: 1; stroke-dasharray: 2 3; }
+.dc .mk { fill: var(--fg); stroke: var(--bg); stroke-width: 2; }
+.dc .lbl { font-size: 12px; fill: var(--fg2); }
+
+/* tasks: pipeline */
+.pipe { display: grid; grid-template-columns: minmax(0, 1fr) 14px minmax(0, 1fr) 14px minmax(0, 1fr) 14px minmax(0, 1fr); align-items: center; gap: 6px; }
+@media (max-width: 720px) { .pipe { grid-template-columns: minmax(0, 1fr); } .pipe .ar { transform: rotate(90deg); justify-self: center; } }
+.pstack { display: flex; flex-direction: column; gap: 8px; }
+.pn { all: unset; cursor: pointer; box-sizing: border-box; display: block; padding: 10px 12px; border-radius: 12px; background: var(--win); box-shadow: 0 1px 2px rgba(0,0,0,.05); font-size: 13.5px; line-height: 1.3; transition: box-shadow .25s; position: relative; overflow: hidden; }
+.pn small { display: block; font-size: 11.5px; color: var(--fg3); margin-top: 2px; }
+.pn:hover { box-shadow: 0 1px 2px rgba(0,0,0,.05), 0 6px 16px rgba(0,0,0,.07); }
+.pn[aria-pressed="true"] { box-shadow: 0 0 0 2px var(--fg); }
+.pn.pulse::before { content: ""; position: absolute; inset: 0; background: linear-gradient(90deg, transparent, var(--hl), transparent); animation: sweep .9s ease-out; }
+@keyframes sweep { from { transform: translateX(-100%); } to { transform: translateX(100%); } }
+.ar { height: 2px; border-radius: 2px; background: var(--fill2); }
+.pdetail { margin-top: 14px; min-height: 3.2em; font-size: 14.5px; color: var(--fg2); max-width: 62ch; }
+.pdetail b { color: var(--fg); font-weight: 600; }
+
+/* tasks: tracker */
+.tt { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 20px; }
+@media (max-width: 720px) { .tt { grid-template-columns: minmax(0, 1fr); } }
+.tt-say { display: flex; flex-direction: column; gap: 6px; }
+.tt-say .chip { border-radius: 12px; padding: 9px 12px; font-size: 13.5px; line-height: 1.3; }
+.tt-say .chip small { display: block; font-size: 11.5px; color: var(--fg3); margin-top: 1px; }
+.tt-say .chip.used { opacity: .45; }
+.tt-in { display: flex; gap: 6px; margin-top: 4px; }
+.tt-in input { flex: 1; min-width: 0; font: inherit; font-size: 13.5px; color: var(--fg); background: var(--fill); border: 0; border-radius: 10px; padding: 8px 11px; outline: none; }
+.tt-in input:focus { background: var(--fill2); }
+.tt-cur { padding: 12px 14px; border-radius: 14px; background: var(--win); box-shadow: 0 1px 2px rgba(0,0,0,.05); }
+.tt-cur b { display: block; font-size: 11.5px; font-weight: 500; color: var(--fg3); }
+.tt-cur span { display: block; font-size: 15px; font-weight: 500; margin-top: 2px; }
+.tt-cur code { display: block; font-size: 11.5px; color: var(--fg3); margin-top: 2px; }
+.tt-why { margin-top: 10px; font-size: 13px; color: var(--fg2); min-height: 2.8em; }
+.tt-why code { font-size: 12px; }
+.tt-log { list-style: none; margin: 10px 0 0; padding: 0; display: flex; flex-direction: column; gap: 6px; max-height: 236px; overflow-y: auto; }
+.tt-log .card { cursor: default; }
+.tt-top { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; margin-bottom: 8px; font-size: 12px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--fg2); }
+.tt-top button { all: unset; cursor: pointer; font-size: 12.5px; font-weight: 400; letter-spacing: 0; text-transform: none; color: var(--fg3); }
+.tt-top button:hover { color: var(--fg); }
+
+/* tasks: detector file */
+.dmd { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr); gap: 18px; align-items: start; }
+@media (max-width: 720px) { .dmd { grid-template-columns: minmax(0, 1fr); } }
+.dmd pre { margin: 0; padding: 14px 0; border-radius: 14px; background: var(--win); font-family: var(--mono); font-size: 12.5px; line-height: 1.7; overflow-x: auto; }
+.dmd pre span { display: block; padding: 0 16px; white-space: pre; transition: background .2s; }
+.dmd pre span[data-k] { cursor: pointer; }
+.dmd pre span[data-k]:hover, .dmd pre span.on { background: var(--fill); }
+.dmd pre span.d { color: var(--fg3); }
+.dmd-x { position: sticky; top: 80px; padding: 14px 16px; border-radius: 14px; background: var(--fill); min-height: 120px; }
+.dmd-x code { font-size: 13px; font-weight: 500; }
+.dmd-x p { margin: 6px 0 0; font-size: 14.5px; color: var(--fg2); }
+
+/* models */
+.req { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr); gap: 18px; align-items: start; }
+@media (max-width: 720px) { .req { grid-template-columns: minmax(0, 1fr); } }
+.req-stack { display: flex; flex-direction: column; gap: 6px; }
+.req-stack .pn { display: flex; justify-content: space-between; gap: 10px; align-items: baseline; }
+.req-stack .pn small { margin: 0; white-space: nowrap; }
+.req-stack .pn.resp { background: var(--fill); box-shadow: none; }
+.req-stack .sep { height: 10px; display: flex; justify-content: center; }
+.req-stack .sep::before { content: ""; width: 2px; border-radius: 2px; background: var(--fill2); }
+.req-x { padding: 14px 16px; border-radius: 14px; background: var(--win); min-width: 0; }
+.req-x p { margin: 0 0 10px; font-size: 14px; color: var(--fg2); }
+.req-x pre { margin: 0; font-family: var(--mono); font-size: 12px; line-height: 1.6; white-space: pre-wrap; overflow-wrap: anywhere; color: var(--fg); }
+.req-x.swap > * { animation: swapin .35s cubic-bezier(.22,1,.36,1); }
+.prov .seg { margin-bottom: 12px; }
+.envt { margin-top: 12px; width: 100%; border-collapse: collapse; font-size: 13.5px; }
+.envt td { padding: 7px 0; vertical-align: top; }
+.envt td:first-child { width: 46%; padding-right: 14px; }
+.envt td:first-child code { font-size: 12.5px; }
+.envt td:last-child { color: var(--fg2); }
+.envt tr + tr td { box-shadow: inset 0 1px 0 var(--fill); }
+</style>
+
+<header class="top">
+  <div class="wrap top-inner">
+    <span class="brand">AUSM</span>
+    <nav class="nav" aria-label="Page">
+      <button type="button" data-view="home" aria-current="page">Overview</button>
+      <button type="button" data-view="docs">Docs</button>
+      <button type="button" data-view="agent-skill">For agents</button>
+      <a href="https://github.com/foundation-interface/AUSM" target="_blank" rel="noopener">GitHub</a>
+      <button type="button" class="theme" id="theme-btn" aria-label="Switch to dark theme"><svg class="sun" width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="3"/><path d="M8 1.5v1.5M8 13v1.5M1.5 8H3M13 8h1.5M3.4 3.4l1 1M11.6 11.6l1 1M3.4 12.6l1-1M11.6 4.4l1-1"/></svg><svg class="moon" width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M13 9.6A5.5 5.5 0 0 1 6.4 3a5.5 5.5 0 1 0 6.6 6.6z"/></svg></button>
+    </nav>
+  </div>
+</header>
+
+<div id="view-home">
+  <div class="wrap">
+    <section class="hero">
+      <p class="eyebrow">MIT · macOS 13+</p>
+      <h1>Your activity, as typed events.</h1>
+      <p class="sub">Sensors, memory and task detection for context-aware apps and agents.</p>
+      <div class="install">
+        <div class="seg" role="tablist" aria-label="Install">
+          <button type="button" role="tab" aria-selected="true" data-install="npm">Node</button>
+          <button type="button" role="tab" aria-selected="false" data-install="swift">Swift</button>
+        </div>
+        <div class="cmd"><code id="install-code">npm install ausm</code><button class="copy" type="button" data-copy="#install-code">Copy</button></div>
+      </div>
+      <div class="links"><a href="#start">Quick start</a><a href="#docs/sensors">How it works</a><button type="button" data-view="agent-skill">For agents</button><a href="https://github.com/foundation-interface/AUSM" target="_blank" rel="noopener">GitHub</a></div>
+    </section>
+
+    <section class="demo" aria-label="Live demo">
+      <p class="cap" id="cap">Watch it run, or click inside the Mac to try it.</p>
+      <div class="demo-grid">
+        <div class="screen" id="screen">
+          <div class="menubar"><b id="mb-app">Notes</b><span>File</span><span>Edit</span><span class="sp"></span><button class="pill" id="shot-btn" type="button">⌘⇧4</button></div>
+          <div class="win" id="w-notes">
+            <div class="win-bar"><span class="dots"><i></i><i></i><i></i></span><span class="win-title">draft.md</span><button class="pill" id="copy-btn" type="button">Copy</button></div>
+            <div class="win-body">
+              <div class="sel" data-src="notes">
+                <h4>Study plan, week 3</h4>
+                <p>Most context switches happened right after a copy, which suggests the clipboard is a good moment to offer help.</p>
+              </div>
+              <input class="note-in" id="note-input" type="text" autocomplete="off" placeholder="Type a line…" aria-label="Type in the note">
+            </div>
+          </div>
+          <div class="win dim" id="w-safari">
+            <div class="win-bar"><span class="dots"><i></i><i></i><i></i></span><span class="stabs" role="tablist" aria-label="Safari tabs"><button class="stab" type="button" role="tab" aria-selected="true" data-tab="0">dl.acm.org</button><button class="stab" type="button" role="tab" aria-selected="false" data-tab="1">github.com</button></span></div>
+            <div class="win-body">
+              <div class="sel" data-src="safari" data-pane="0">
+                <p class="muted">Anind K. Dey · Personal and Ubiquitous Computing, 2001</p>
+                <h4>Understanding and Using Context</h4>
+                <p>Context is any information that can be used to characterize the situation of an entity.</p>
+              </div>
+              <div class="sel" data-src="safari" data-pane="1" hidden>
+                <p class="muted">github.com/foundation-interface/AUSM</p>
+                <h4>AUSM</h4>
+                <p>Sensors, materials and task detectors for context-aware apps on macOS.</p>
+              </div>
+            </div>
+          </div>
+          <div class="shot-layer" id="shot-layer" hidden><div class="shot-hint">Drag to capture · Esc</div></div>
+          <div class="flash" id="flash"></div>
+          <svg class="cursor" id="cursor" width="22" height="22" viewBox="0 0 22 22" aria-hidden="true"><path d="M5.6 3.3c-.45-.33-1.1 0-1.1.55v14.9c0 .55.66.85 1.08.48l3.55-3.2c.22-.2.5-.3.8-.3h5.2c.56 0 .85-.67.46-1.07L5.6 3.3z" /></svg>
+          <div class="key" id="key" aria-hidden="true"></div>
+          <div class="ctl" id="ctl">
+            <button type="button" class="ctl-b" id="ctl-play" aria-label="Pause auto-play"><svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><path class="i-pause" d="M3 2h2v8H3zM7 2h2v8H7z"/><path class="i-play" d="M3.5 2.2v7.6L9.8 6z"/></svg></button>
+            <span class="ctl-seg" role="group" aria-label="Speed"><button type="button" data-speed="0.5">0.5×</button><button type="button" data-speed="1" aria-pressed="true">1×</button><button type="button" data-speed="2">2×</button></span>
+          </div>
+        </div>
+        <div class="stream">
+          <div class="lanes">
+            <div class="lane"><div class="lane-h"><a href="#docs/sensors">Sensors</a><span>Each action, typed</span></div><ul class="lane-list" id="lane-sensors" aria-label="Sensor events"></ul></div>
+            <div class="lane"><div class="lane-h"><a href="#docs/materials">Materials</a><span>App › window › tab</span></div><div class="tree" id="mat-tree" aria-label="Materials grouped by app and window"></div></div>
+            <div class="lane"><div class="lane-h"><a href="#docs/tasks">Tasks</a><span>Named by a model</span></div><ul class="lane-list" id="lane-tasks" aria-label="Task events" aria-live="polite"></ul></div>
+          </div>
+        </div>
+      </div>
+      <div class="pop" id="pop" role="tooltip" hidden><div class="pop-body" id="pop-body"><code class="pop-m" id="pop-m"></code><pre id="pop-json"></pre></div></div>
+    </section>
+
+    <section class="block" id="start">
+      <h2>Quick start</h2>
+      <p class="lead">Subscribe to what you need. Everything runs on the Mac.</p>
+      <div class="code-tabs">
+        <div class="seg" role="tablist" aria-label="Language">
+          <button type="button" role="tab" aria-selected="true" data-lang-tab="node">Node</button>
+          <button type="button" role="tab" aria-selected="false" data-lang-tab="swift">Swift</button>
+        </div>
+<pre class="code" data-tab="node">import { createRuntime } from 'ausm/runtime';
+
+const ausm = createRuntime({ detectorPipeline: { provider: 'cerebras' } });
+
+ausm.onCopyPasteEvent((e) => console.log(e.action, e.contentType));
+ausm.onTaskEvent((e) => console.log(e.taskLabel));
+await ausm.initialize();</pre>
+        <div class="out" data-tab="node">COPY TEXT
+→ Reading paper: Understanding and Using Context</div>
+<pre class="code" data-tab="swift" hidden>import ScreenshotMonitorKit
+
+let shots = ScreenshotMonitor(options: .init())
+shots.onCapture = { capture in
+  Task { @MainActor in show(capture.image) }
+}
+shots.start()</pre>
+        <div class="out" data-tab="swift" hidden>CGImage 2048×1330 @2x · mode: selection</div>
+      </div>
+    </section>
+
+
+    <section class="block">
+      <h2>Built for coding agents</h2>
+      <p class="lead">One skill teaches Claude Code the API and the privacy rules.</p>
+      <div class="agents">
+        <div>
+          <div class="cmd"><code id="skill-cmd">npx skills add foundation-interface/AUSM</code><button class="copy" type="button" data-copy="#skill-cmd">Copy</button></div>
+          <p class="small">Or <button type="button" data-view="agent-skill">read the skill file</button> and paste it into AGENTS.md.</p>
+        </div>
+        <ul class="prompts">
+          <li>Show what I copied in the last hour, grouped by app.</li>
+          <li>Write a detector that notices when I'm stuck on an error.</li>
+        </ul>
+      </div>
+    </section>
+  </div>
+</div>
+
+<div id="view-agent" hidden>
+  <div class="wrap">
+    <section class="skill-hero">
+      <h1>Teach your agent AUSM.</h1>
+      <p class="sub">API, defaults and privacy rules in one skill file.</p>
+      <div class="install">
+        <div class="cmd"><code id="skill-cmd2">npx skills add foundation-interface/AUSM</code><button class="copy" type="button" data-copy="#skill-cmd2">Copy</button></div>
+      </div>
+    </section>
+    <div class="file">
+      <div class="file-head"><span>skills/ausm/SKILL.md</span><button class="copy" id="copy-skill" type="button">Copy file</button></div>
+      <div class="file-body"><pre class="md" id="skill-view"></pre></div>
+    </div>
+  </div>
+</div>
+
+
+<div id="view-docs" hidden>
+  <div class="wrap docs">
+    <nav class="dnav" aria-label="Concepts">
+      <a href="#docs/sensors" data-doc="sensors"><i>01</i>Sensors</a>
+      <a href="#docs/materials" data-doc="materials"><i>02</i>Materials</a>
+      <a href="#docs/memory" data-doc="memory"><i>03</i>Memory</a>
+      <a href="#docs/tasks" data-doc="tasks"><i>04</i>Tasks</a>
+      <a href="#docs/models" data-doc="models"><i>05</i>Models</a>
+    </nav>
+
+    <!-- 01 sensors -->
+    <article class="dpage" data-page="sensors">
+      <p class="eyebrow">Concept 01</p>
+      <h1>Sensors</h1>
+      <p class="sub">Each sensor watches one macOS signal and turns it into a typed event.</p>
+
+      <div class="fig">
+        <div class="sx">
+          <div class="sx-list" role="tablist" aria-label="Sensors" id="sx-list"></div>
+          <div class="sx-main">
+            <div class="flow" id="sx-flow">
+              <div class="fnode"><b>macOS</b><span id="sx-api"></span></div>
+              <div class="fnode"><b>Helper</b><span id="sx-helper"></span></div>
+              <div class="fnode"><b>Event</b><span id="sx-kind"></span></div>
+              <div class="fnode"><b>You</b><span id="sx-sub"></span></div>
+            </div>
+            <div class="sx-meta" id="sx-meta"></div>
+            <pre class="sx-json" id="sx-json"></pre>
+          </div>
+        </div>
+        <p class="fig-cap">A filled dot means the sensor is on by default.</p>
+      </div>
+
+      <h3>Subscribe</h3>
+      <p class="hint">Every event carries <code>kind</code>, <code>eventID</code>, <code>timestamp</code> and <code>displayID</code>.</p>
+<pre class="code">const ausm = createRuntime({
+  textInput: { enableNativeTextInput: true },   <span class="c">// off by default</span>
+});
+
+ausm.onTextSelectionEvent((e) =&gt; {
+  if (e.selectionStage === 'END') explain(e.selectedText);
+});
+await ausm.initialize();</pre>
+      <div class="dnext"><a href="#docs/materials"><small>Next</small>Materials</a></div>
+    </article>
+
+    <!-- 02 materials -->
+    <article class="dpage" data-page="materials" hidden>
+      <p class="eyebrow">Concept 02</p>
+      <h1>Materials</h1>
+      <p class="sub">A material is one thing you look at: a tab, a file, a thread.</p>
+
+      <h3>One title in one app, one id</h3>
+      <p class="hint">Switch tabs, or open the same tab in a second window.</p>
+      <div class="fig">
+        <div class="idm">
+          <div>
+            <div class="mwin" id="id-w1">
+              <div class="win-bar"><span class="dots"><i></i><i></i><i></i></span><span class="stabs" id="id-tabs" role="tablist" aria-label="Tabs"></span></div>
+              <div class="mwin-b"><i></i><i></i><i></i></div>
+            </div>
+            <div class="mwin ghost" id="id-w2">
+              <div class="win-bar"><span class="dots"><i></i><i></i><i></i></span><span class="win-title" id="id-w2t"></span></div>
+            </div>
+          </div>
+          <div>
+            <div class="idrec">
+              <div class="idrow"><b>title</b><code id="id-title"></code></div>
+              <div class="idrow"><b>bundle_id</b><code>com.apple.Safari</code></div>
+              <div class="idrow"><b>window_id</b><code id="id-win">4182</code></div>
+              <div class="idrow idkey"><b>material_id</b><code id="id-mat">…</code></div>
+            </div>
+            <div class="idf">mat_ + sha256(title + "\0" + bundle_id)[0:12]</div>
+            <div class="idbtns"><button class="chip" type="button" id="id-dup" aria-pressed="false">Open in new window</button></div>
+          </div>
+        </div>
+        <p class="fig-cap">The window id changes. The material id doesn't. It's the real hash, computed here.</p>
+      </div>
+
+      <h3>Frames are kept only when the window changes</h3>
+      <p class="hint">Each capture is compared to the last kept frame by perceptual hash. Drag the threshold.</p>
+      <div class="fig">
+        <div class="fr-top"><span>Hash distance threshold</span><input type="range" id="fr-th" min="1" max="20" value="8" aria-label="Hash distance threshold"><output id="fr-tho">8</output></div>
+        <div class="bars" id="fr-bars"><div class="thr" id="fr-thr"><span>keep ≥</span></div></div>
+        <div class="bar-l" id="fr-lbl"></div>
+        <div class="strip" id="fr-strip"></div>
+        <p class="fig-cap" id="fr-cap"></p>
+      </div>
+      <div class="facts">
+        <div class="fact"><b>Captured on</b><span>appear, focus, title change, unfocus, every 2 s</span></div>
+        <div class="fact"><b>Kept per material</b><span>200 frames, oldest dropped</span></div>
+        <div class="fact"><b>Needs</b><span><code>enableScreenStreaming</code></span></div>
+      </div>
+
+      <h3>Apps add their own fields</h3>
+      <p class="hint">Extractors read the window event and attach <code>appMetadata</code>.</p>
+      <div class="extr">
+        <div><b>Browsers</b><pre>url     https://dl.acm.org/doi/…
+domain  dl.acm.org</pre></div>
+        <div><b>Editors</b><pre>file      /src/runtime.ts
+filename  runtime.ts
+extension ts</pre></div>
+        <div><b>Your app</b><pre>class Slack implements
+  MaterialMetadataExtractor</pre></div>
+      </div>
+      <div class="dnext"><a href="#docs/memory"><small>Next</small>Memory</a></div>
+    </article>
+
+    <!-- 03 memory -->
+    <article class="dpage" data-page="memory" hidden>
+      <p class="eyebrow">Concept 03</p>
+      <h1>Memory</h1>
+      <p class="sub">Everything lands in one SQLite file on the Mac. Query it, freeze it, or delete it.</p>
+
+      <div class="fig">
+        <div class="erd" id="erd">
+          <svg id="erd-svg" aria-hidden="true"></svg>
+          <div class="ecol"><div class="ecap">Materials</div></div>
+          <div class="ecol"><div class="ecap">Per material</div></div>
+          <div class="ecol"><div class="ecap">Captures &amp; tasks</div></div>
+        </div>
+        <div class="tdetail" id="erd-detail"></div>
+        <p class="fig-cap">Click a table.</p>
+      </div>
+      <div class="facts">
+        <div class="fact"><b>Path</b><span><code>materialManager.dbPath</code></span></div>
+        <div class="fact"><b>Default</b><span><code>:memory:</code>, gone on quit</span></div>
+        <div class="fact"><b>On disk</b><span>owner-only folder (0700)</span></div>
+        <div class="fact"><b>Pause writes</b><span><code>freezeMemory()</code></span></div>
+      </div>
+
+      <h3>Recent work weighs more</h3>
+      <p class="hint">Focus time decays with a half-life. <code>getMaterialWeights(days)</code> ranks materials by it.</p>
+      <div class="fig">
+        <div class="dc-top"><span>Half-life</span><input type="range" id="dc-h" min="1" max="30" value="7" aria-label="Half-life in days"><output id="dc-ho">7 days</output></div>
+        <div class="dc" id="dc"></div>
+        <p class="fig-cap">How much one hour of focus still counts, by age. Hover the curve.</p>
+      </div>
+
+      <h3>Query</h3>
+<pre class="code">const [top] = await ausm.getMaterials(20);
+const frame = await ausm.getMaterialLatestFrame(top.materialId);
+const text  = await ausm.getMaterialContent(top.materialId);   <span class="c">// OCR, if enabled</span>
+const rank  = await ausm.getMaterialWeights(7);</pre>
+      <div class="dnext"><a href="#docs/tasks"><small>Next</small>Tasks</a></div>
+    </article>
+
+    <!-- 04 tasks -->
+    <article class="dpage" data-page="tasks" hidden>
+      <p class="eyebrow">Concept 04</p>
+      <h1>Tasks</h1>
+      <p class="sub">Detectors are plain-language rules a model checks against the screen. One of them names your task.</p>
+
+      <div class="fig">
+        <div class="pipe" id="pipe">
+          <div class="pstack">
+            <button class="pn" type="button" data-p="frame">Focused window<small>latest kept frame</small></button>
+            <button class="pn" type="button" data-p="events">Recent events<small>last 40</small></button>
+          </div>
+          <div class="ar"></div>
+          <div class="pstack"><button class="pn" type="button" data-p="group">Group detectors<small>by sources + events</small></button></div>
+          <div class="ar"></div>
+          <div class="pstack"><button class="pn" type="button" data-p="call">One model call<small>per group</small></button></div>
+          <div class="ar"></div>
+          <div class="pstack">
+            <button class="pn" type="button" data-p="detector">onDetectorEvent<small>after cooldown</small></button>
+            <button class="pn" type="button" data-p="task">onTaskEvent<small>via TaskTracker</small></button>
+          </div>
+        </div>
+        <p class="pdetail" id="pdetail"></p>
+      </div>
+
+      <h3>How a task keeps its id</h3>
+      <p class="hint">The model only returns a label. The tracker decides if it's the same work.</p>
+      <div class="fig">
+        <div class="tt">
+          <div>
+            <div class="tt-top">Model says</div>
+            <div class="tt-say" id="tt-say"></div>
+            <form class="tt-in" id="tt-form"><input id="tt-input" placeholder="Or type a label…" aria-label="Task label" autocomplete="off"><button class="chip" type="submit">Send</button></form>
+          </div>
+          <div>
+            <div class="tt-top">Tracker<button type="button" id="tt-reset">Reset</button></div>
+            <div class="tt-cur" id="tt-cur"><b>Current task</b><span>None</span></div>
+            <p class="tt-why" id="tt-why"></p>
+            <ul class="tt-log" id="tt-log" aria-live="polite"></ul>
+          </div>
+        </div>
+        <p class="fig-cap">Same work = label words overlap ≥ 70% and description ≥ 60%. This runs the real rule.</p>
+      </div>
+
+      <h3>Write a detector</h3>
+      <p class="hint">A folder with a <code>DETECTOR.md</code>. Hover a line.</p>
+      <div class="dmd">
+<pre id="dmd"><span class="d">---</span><span data-k="name">name: stuck-on-error</span><span data-k="event">event: stuck</span><span data-k="trigger">trigger: interval</span><span data-k="interval">interval: 30000</span><span data-k="cooldown">cooldown: 30000</span><span data-k="sources">sources: [screen, events]</span><span data-k="events">events: [copy-paste, text-input]</span><span data-k="isolated">isolated: false</span><span class="d">---</span><span data-k="body">Fire when the same error stays on screen</span><span data-k="body">and the user has copied or searched it.</span><span data-k="body">Summarise the error in under 12 words.</span></pre>
+        <div class="dmd-x" id="dmd-x"></div>
+      </div>
+<pre class="code" style="margin-top:14px">createRuntime({ detectors: { extraDirs: ['./detectors'] } });
+ausm.onDetectorEvent((e) =&gt; { if (e.eventType === 'stuck') offerHelp(e.summary); });</pre>
+      <div class="dnext"><a href="#docs/models"><small>Next</small>Models</a></div>
+    </article>
+
+    <!-- 05 models -->
+    <article class="dpage" data-page="models" hidden>
+      <p class="eyebrow">Concept 05</p>
+      <h1>Models</h1>
+      <p class="sub">Sensors and memory never call a model. Detectors and tasks need one you configure.</p>
+
+      <h3>What one call sends</h3>
+      <p class="hint">Click a part.</p>
+      <div class="fig">
+        <div class="req">
+          <div class="req-stack" id="req-stack">
+            <button class="pn" type="button" data-r="system">System prompt<small>fixed</small></button>
+            <button class="pn" type="button" data-r="state">Current task<small>if any</small></button>
+            <button class="pn" type="button" data-r="specs">Detector rules<small>this group</small></button>
+            <button class="pn" type="button" data-r="events">Recent events<small>≤ 40</small></button>
+            <button class="pn" type="button" data-r="image">Window frame<small>JPEG, downsized</small></button>
+            <div class="sep"></div>
+            <button class="pn resp" type="button" data-r="out">Response<small>JSON</small></button>
+          </div>
+          <div class="req-x" id="req-x"></div>
+        </div>
+        <p class="fig-cap">Only the focused window's frame is sent, never the whole screen.</p>
+      </div>
+
+      <h3>Pick a provider</h3>
+      <div class="prov">
+        <div class="seg" role="tablist" aria-label="Provider" id="prov-tabs">
+          <button type="button" role="tab" aria-selected="true" data-prov="cerebras">Cerebras</button>
+          <button type="button" role="tab" aria-selected="false" data-prov="vertex">Vertex</button>
+          <button type="button" role="tab" aria-selected="false" data-prov="compat">OpenAI-compatible</button>
+        </div>
+        <pre class="code" id="prov-code"></pre>
+        <table class="envt" id="prov-env"></table>
+      </div>
+      <div class="facts" style="margin-top:20px">
+        <div class="fact"><b>Output</b><span>JSON only, temperature 0</span></div>
+        <div class="fact"><b>No key set</b><span>pipeline stays off, no error</span></div>
+        <div class="fact"><b>Model override</b><span><code>TASK_DETECTOR_MODEL</code></span></div>
+      </div>
+      <div class="dnext"><a href="#docs/sensors"><small>Back to</small>Sensors</a></div>
+    </article>
+  </div>
+</div>
+
+<footer class="wrap"><span>AUSM · MIT</span><span>Runs locally. Nothing leaves the Mac unless you add a model provider.</span><a href="https://github.com/foundation-interface/AUSM" target="_blank" rel="noopener">GitHub</a></footer>
+
+<script type="text/plain" id="skill-src">
+---
+name: ausm
+description: Build context-aware apps and agents on macOS with AUSM (Activity Understanding and Scaffolding Medium). Use when code imports `ausm`, `ausm/runtime`, `ausm/bridge/*`, `@ausm/*`, `ScreenshotMonitorKit` or `CursorMonitorKit`, or when the user wants an app to react to what they do on their Mac (text selection, typing, copy/paste, window focus, screenshots, cursor, screen frames, detected tasks).
+---
+
+# AUSM
+
+AUSM turns low-level macOS activity into typed events, tracks the "materials" (documents, tabs,
+threads) a user works with, and can classify the current task with a multimodal model.
+Three layers, each optional on top of the one before:
+
+1. **Sensors** (`device-macos/*`): native helpers that emit events. macOS only.
+2. **Materials + memory**: window crops, perceptual hashes, OCR, SQLite store.
+3. **Understanding**: `DETECTOR.md` specs evaluated by Vertex (Gemini) or Cerebras, producing
+   `DetectorEvent` and `TaskEvent`.
+
+## Pick the integration path first
+
+| The host is | Use | Notes |
+| --- | --- | --- |
+| Node or Electron main process | `createRuntime()` from `ausm/runtime` | The full stack. Helpers run as child processes. |
+| Electron renderer | `window.ausm` via the bridge preload | Events only. Memory queries are main-process only. |
+| Native Swift / SwiftUI app | `ScreenshotMonitorKit`, `CursorMonitorKit` (SwiftPM) | In-process, statically linked, no Node. Only these two sensors. |
+
+Never mix paths for the same sensor in one app (for example the Swift kit and the Node
+screenshot helper at once). Both install event taps.
+
+## Node / Electron
+
+```bash
+npm install ausm
+```
+
+Requirements: macOS 13+, Node >= 18, Xcode Command Line Tools, Python >= 3.10 (materials, OCR).
+
+```ts
+import { createRuntime } from 'ausm/runtime';     // runtime: only from 'ausm/runtime'
+import type { MaterialEvent, TaskEvent } from 'ausm'; // types: from 'ausm'
+
+const runtime = createRuntime({
+  enableScreenStreaming: true,                      // needed for materials
+  materialManager: { enabled: true, dbPath: '/path/to/ausm.db' },
+  textInput: { enableNativeTextInput: true },       // opt-in, sensitive
+  cursorPlusPlus: { enabled: true },                // opt-in
+  detectorPipeline: { provider: 'cerebras' },       // or 'vertex' + projectId
+});
+
+runtime.onMaterialEvent((e: MaterialEvent) => {});
+runtime.onTaskEvent((e: TaskEvent) => {});
+await runtime.initialize();
+// ...
+runtime.shutdown();
+```
+
+### Subscriptions (exact names, they are not uniform)
+
+| Method | Event `kind` | Payload highlights |
+| --- | --- | --- |
+| `onTextSelectionEvent` | `textSelection` | selected text, `SelectionMethod`, `SelectionStage` |
+| `subscribeToTextInputEvent` | `textInput` | `text`, `TEXT_INPUT_STARTED / UPDATED / ENDED`. **Not** `onTextInputEvent`. |
+| `onCopyPasteEvent` | `copyPaste` | `COPY` / `PASTE`, `contentType`, `content` |
+| `onApplicationSwitchEvent` | `windowState` | every window state: `APPEAR FOCUSED UNFOCUSED VANISHED TITLE_CHANGED BOUNDS_CHANGED` |
+| `onSpaceChangeEvent` | `spaceChange` | Mission Control space changed |
+| `onScreenshotEvent` | `screenshot` | `SCREENSHOT_STARTED / UPDATED / FINISHED`; image only on FINISHED |
+| `onCursorPlusPlusEvent` | `cursorPlusPlus` | `CLICK DOUBLE_CLICK RIGHT_CLICK SCROLL HOLD_START HOLD_END DRAG MOVE`, UI element role/label |
+| `onMaterialEvent` | `material` | `MATERIAL_CREATED FOCUSED UNFOCUSED FRAME_CAPTURED CONTENT_UPDATED`, `appMetadata` |
+| `onDetectorEvent` | `detector` | `detectorName`, `eventType`, `confidence`, `summary`, `evidence` |
+| `onTaskEvent` | `task` | `TASK_DETECTED / UPDATED / COMPLETED`, `taskLabel`, `level` |
+
+Every event has `kind`, `eventID`, `timestamp`, `displayID`; switch on `kind`. Enum values are
+`UPPER_SNAKE`. Callbacks are additive and `shutdown()` does not remove them, so register once.
+
+### Defaults
+
+- On by default (darwin): text selection, screenshot, clipboard, viewport (window state),
+  detector scan.
+- Off unless configured: screen stream, camera, text input, material manager, cursor++, memory
+  OCR, Material Chat HTTP host.
+- The pipeline runs only when a Vertex `projectId` or `CEREBRAS_API_KEY` is set. Missing optional
+  pieces log a warning and continue; they do not throw.
+- `materialManager.dbPath` defaults to `:memory:`. Set a real path to persist.
+
+### Queries (after `initialize()`, main process only)
+
+`getMaterials(limit)`, `getMaterialLatestFrame(id)`, `getMaterialFrames(id, limit)`,
+`getMaterialContent(id)` (OCR text), `getMaterialWeights(halfLifeDays)`,
+`getScreenshots(limit, since)`, `getScreenshot(id)`, `getScreenDisplays()`,
+`captureLatestScreenFrame()`, `getCameraDevices()`, `captureLatestCameraFrame()`,
+`freezeMemory()` / `unfreezeMemory()`.
+
+These are stubs that return empty values. Do not build on them: `getImmediateContext`,
+`getRelevantMaterials`, `getScreenshotImageData`, `getCoveredMaterials`, `getBounds`,
+`getActiveMaterialWindows`.
+
+### Electron
+
+```ts
+// main.ts. Import the bridge BEFORE app.ready (it registers the ausm-screenshot:// scheme).
+import { setupAUSMElectronBridge, getAUSMPreloadPath } from 'ausm/bridge/electron';
+
+const win = new BrowserWindow({
+  webPreferences: { preload: getAUSMPreloadPath(), contextIsolation: true },
+});
+const bridge = setupAUSMElectronBridge(win, runtime);
+```
+
+Renderer: `window.ausm.onTextSelection(cb)`, `onScreenshot`, `onWindowState`, `onTextInput`,
+`onMaterialEvent`, `onCursorPlusPlusEvent`, `onCopyPasteEvent`, `onSpaceChange`, `onTaskEvent`,
+`onDetectorEvent`, `getScreenDisplays()`, `subscribeScreenStream(cb)`. To add your own preload
+API, use `exposeAUSM()` from `ausm/bridge/preload-api` and expose your namespace separately.
+
+### Detectors
+
+A detector is a folder with a `DETECTOR.md`. Put custom ones in a directory listed in
+`detectors.extraDirs`. They are loaded on `initialize()`.
+
+```markdown
+---
+name: stuck-on-error
+description: Notices when the user keeps returning to the same error
+event: stuck            # `task` is reserved for the TaskTracker
+cooldown: 30000         # ms between firings
+interval: 30000         # ms between evaluations (default = cooldown)
+trigger: interval       # interval | screen
+sources: [screen, events]
+events: [window-state, text-input, copy-paste, screenshot]
+isolated: false         # true = its own model call
+enabled: true
+---
+Fire when the focused material shows the same error message for several evaluations and the
+user has copied or searched for it. Summarise the error in under 12 words.
+```
+
+Results arrive on `onDetectorEvent` with `eventType: 'stuck'`. The shipped `rapid-task`
+detector (`event: task`) drives `onTaskEvent`.
+
+Provider setup: `TASK_DETECTOR_PROVIDER=cerebras` + `CEREBRAS_API_KEY`, or
+`TASK_DETECTOR_PROVIDER=vertex` + `TASK_DETECTOR_PROJECT_ID` + `gcloud auth application-default login`.
+
+### Material Chat (optional)
+
+`materialChat: { enabled: true }` (or `http: { enabled: true, port: 8788 }`) starts a child process
+with memory search and a Claude agent over the user's materials. Get its URL from
+`runtime.getHttpUrl()`. Never start the `material-chat` bin yourself. It needs `ANTHROPIC_API_KEY`.
+
+## Native Swift
+
+```swift
+// Package.swift
+.package(url: "https://github.com/foundation-interface/AUSM.git", from: "0.1.0"),
+// target dependencies
+.product(name: "ScreenshotMonitorKit", package: "AUSM"),
+.product(name: "CursorMonitorKit", package: "AUSM"),
+```
+
+```swift
+import ScreenshotMonitorKit
+
+var options = ScreenshotMonitor.Options()
+options.writeTempFile = false
+let shots = ScreenshotMonitor(options: options)
+shots.onCapture = { capture in            // runs on the monitor's private queue
+  Task { @MainActor in show(capture.image, scale: capture.scale) }
+}
+shots.onError = { problem, message in }   // accessibility_denied, screen_recording_denied, event_tap_disabled
+shots.start()
+```
+
+- `ScreenshotMonitor` callbacks arrive on a private serial queue. Hop to the main actor for UI.
+  `start()`/`stop()` are safe from any thread.
+- `CursorMonitor.onEvent(CursorEvent, CursorContext?)` arrives on the main thread. The context
+  carries the live `AXUIElement` under the cursor.
+- The kits are compiled into the host binary. The **host app** is what the user grants
+  Accessibility and Screen Recording to, and it must be signed with a stable identity, or macOS
+  drops the grants on every rebuild.
+
+## Permissions
+
+| Sensor | Permission | Default |
+| --- | --- | --- |
+| text selection, text input, window state, cursor++ | Accessibility | selection and window state on |
+| screen stream, screenshot image, window titles | Screen Recording | screenshot on, stream off |
+| camera | Camera | off |
+| clipboard | none | on |
+
+Permission problems arrive as error events. Check them and show the user what to grant. Do not
+retry in a loop.
+
+## Rules for agents working with AUSM
+
+- **Ask before turning on a sensitive sensor.** Text input, camera, cursor++ and screen streaming
+  are off by default for a reason. Enable only what the feature needs, and tell the user which
+  macOS permissions it will ask for.
+- **Never log user content.** Do not print `text`, clipboard `content`, window titles, URLs or
+  frames in logs, test output or commit messages. Log kinds, counts and lengths instead.
+- **Don't run sensors to test your code.** The helpers inherit your terminal's permissions and
+  will capture real activity (for example, the terminal's scrollback through text input). Unit
+  test against fake events built with the `create*Event` factories and the runtime's `emit*Event`
+  methods.
+- **Respect password fields and concealed clipboard entries.** AUSM skips them. Don't add
+  workarounds that read them.
+- Keep the memory database out of version control and out of shared folders.
+
+## Troubleshooting
+
+| Symptom | Likely cause |
+| --- | --- |
+| No events at all | Accessibility not granted to the host app (or the terminal in development) |
+| Screenshot event but no image, or windows missing from frames | Screen Recording not granted |
+| Window events with empty titles | Screen Recording not granted. macOS hides titles without it |
+| No `TaskEvent` | No `CEREBRAS_API_KEY` or Vertex `projectId`, or `rapid-task` disabled |
+| Grants vanish after each rebuild (Swift) | App signed ad hoc. Sign with a stable identity |
+| `Cannot find module '@ausm/core'` in the monorepo | Run `npm run build` first. Packages resolve through `dist/` |
+</script>
+<script>
+
+(function () {
+  "use strict";
+  var $ = function (s, r) { return (r || document).querySelector(s); };
+  var $$ = function (s, r) { return Array.prototype.slice.call((r || document).querySelectorAll(s)); };
+  var esc = function (s) { return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;"); };
+  var calm = window.matchMedia && matchMedia("(prefers-reduced-motion: reduce)").matches;
+  function json(o) {
+    return esc(JSON.stringify(o, null, 2)).replace(/: (&quot;.*?&quot;|"[^"\n]*"|-?\d[\d.]*|true|false|null)/g, ': <span class="v">$1</span>');
+  }
+  function replay(el, cls) { el.classList.remove(cls); void el.offsetWidth; el.classList.add(cls); }
+
+  /* ---------- routing within docs ---------- */
+  var pages = {}, inited = {};
+  $$(".dpage").forEach(function (p) { pages[p.dataset.page] = p; });
+  window.__ausmDoc = function (name) {
+    if (!pages[name]) name = "sensors";
+    Object.keys(pages).forEach(function (k) { pages[k].hidden = k !== name; });
+    $$(".dnav a").forEach(function (a) { if (a.dataset.doc === name) a.setAttribute("aria-current", "page"); else a.removeAttribute("aria-current"); });
+    if (!inited[name] && init[name]) { inited[name] = true; init[name](); }
+    if (name === "memory") requestAnimationFrame(drawErd);
+  };
+
+  var init = {};
+  $$(".dpage input[type=range]").forEach(function (r) {
+    var paint = function () { r.style.setProperty("--p", ((r.value - r.min) / (r.max - r.min) * 100) + "%"); };
+    paint(); r.addEventListener("input", paint);
+  });
+
+  /* ---------- 01 sensors ---------- */
+  var SENSORS = [
+    { n: "Text selection", on: 1, api: "Accessibility selected range + event tap", h: "text-selection", k: "textSelection", m: "onTextSelectionEvent", perm: "Accessibility", st: "START · UPDATE · END",
+      j: { kind: "textSelection", selectedText: "Context is any information that can be used…", selectionMethod: "MOUSE", selectionStage: "END", detectionSource: "NATIVE", sourceElement: { application: "Safari" } } },
+    { n: "Text input", on: 0, api: "AXObserver, value changed", h: "text-input", k: "textInput", m: "subscribeToTextInputEvent", perm: "Accessibility", st: "STARTED · UPDATED · ENDED",
+      j: { kind: "textInput", text: "Read Dey 2001 tonight", status: "TEXT_INPUT_UPDATED", sourceElement: { type: "AXTextArea", application: "Notes" } } },
+    { n: "Clipboard", on: 1, api: "NSPasteboard changeCount", h: "clipboard-monitor", k: "copyPaste", m: "onCopyPasteEvent", perm: "None", st: "COPY · PASTE",
+      j: { kind: "copyPaste", action: "COPY", contentType: "TEXT", content: "any information that can be used…", changeCount: 412 } },
+    { n: "Windows", on: 1, api: "AXObserver + CGWindowList", h: "viewport-manager", k: "windowState", m: "onApplicationSwitchEvent", perm: "Accessibility", st: "APPEAR · FOCUSED · UNFOCUSED · VANISHED · TITLE_CHANGED · BOUNDS_CHANGED",
+      j: { kind: "windowState", state: "FOCUSED", application: "Safari", bundleId: "com.apple.Safari", windowId: 4182, title: "Understanding and Using Context", documentPath: "https://dl.acm.org/doi/…" } },
+    { n: "Spaces", on: 1, api: "NSWorkspace space change", h: "viewport-manager", k: "spaceChange", m: "onSpaceChangeEvent", perm: "None", st: "one event per switch",
+      j: { kind: "spaceChange", eventID: "e_9f1c", timestamp: 1730900000000, displayID: 1 } },
+    { n: "Screenshot", on: 1, api: "Event tap on ⌘⇧3/4/5 + ScreenCaptureKit", h: "screenshot-detector", k: "screenshot", m: "onScreenshotEvent", perm: "Screen Recording", st: "STARTED · UPDATED · FINISHED",
+      j: { kind: "screenshot", status: "SCREENSHOT_FINISHED", type: "PARTIAL_SCREEN", bounds: { x: 412, y: 220, width: 640, height: 300 }, imageWidth: 1280, imageHeight: 600 } },
+    { n: "Cursor++", on: 0, api: "Event tap + AX element at point", h: "cursor-plus-plus", k: "cursorPlusPlus", m: "onCursorPlusPlusEvent", perm: "Accessibility", st: "CLICK · DOUBLE_CLICK · RIGHT_CLICK · SCROLL · HOLD · DRAG · MOVE",
+      j: { kind: "cursorPlusPlus", action: "CLICK", x: 812, y: 404, application: "Safari", uiElementRole: "AXLink", uiElementLabel: "PDF", materialId: "mat_3a9f0c21b7d4" } },
+    { n: "Screen stream", on: 0, api: "ScreenCaptureKit SCStream", h: "screen-stream", k: "frames", m: "feeds Materials", perm: "Screen Recording", st: "shared-memory frames",
+      j: { enableScreenStreaming: true, note: "Frames are not events. They feed Materials and detectors." } },
+    { n: "Camera", on: 0, api: "AVCaptureSession", h: "camera", k: "frame on request", m: "captureLatestCameraFrame()", perm: "Camera", st: "on request",
+      j: { camera: { enabled: true }, call: "await ausm.captureLatestCameraFrame()" } }
+  ];
+  init.sensors = function () {
+    var list = $("#sx-list");
+    list.innerHTML = SENSORS.map(function (s, i) {
+      return '<button class="sx-b" type="button" role="tab" data-i="' + i + '" aria-selected="false"><i class="dot' + (s.on ? " on" : "") + '"></i>' + esc(s.n) + "</button>";
+    }).join("");
+    function pick(i) {
+      var s = SENSORS[i];
+      $$(".sx-b", list).forEach(function (b) { b.setAttribute("aria-selected", String(+b.dataset.i === i)); });
+      $("#sx-api").textContent = s.api;
+      $("#sx-helper").innerHTML = "<code>" + esc(s.h) + "</code>";
+      $("#sx-kind").innerHTML = "<code>" + esc(s.k) + "</code>";
+      $("#sx-sub").innerHTML = "<code>" + esc(s.m) + "</code>";
+      $("#sx-meta").innerHTML = '<span>Permission <b>' + esc(s.perm) + '</b></span><span>Default <b>' + (s.on ? "On" : "Off") + '</b></span><span>' + esc(s.st) + "</span>";
+      var pre = $("#sx-json"); pre.innerHTML = json(s.j); replay(pre, "swap");
+      if (!calm) $$("#sx-flow .fnode").forEach(function (n, k) { n.style.setProperty("--d", (k * 90) + "ms"); replay(n, "lit"); });
+    }
+    list.addEventListener("click", function (e) { var b = e.target.closest(".sx-b"); if (b) pick(+b.dataset.i); });
+    list.addEventListener("keydown", function (e) {
+      var cur = +($(".sx-b[aria-selected=true]", list) || {}).dataset.i || 0;
+      var d = e.key === "ArrowDown" || e.key === "ArrowRight" ? 1 : e.key === "ArrowUp" || e.key === "ArrowLeft" ? -1 : 0;
+      if (!d) return; e.preventDefault();
+      var n = (cur + d + SENSORS.length) % SENSORS.length; pick(n); $$(".sx-b", list)[n].focus();
+    });
+    pick(0);
+  };
+
+  /* ---------- 02 materials ---------- */
+  var TABS = ["Understanding and Using Context", "GitHub · ausm", "Notes · study plan"];
+  function sha12(text) {
+    try {
+      return crypto.subtle.digest("SHA-256", new TextEncoder().encode(text)).then(function (buf) {
+        return Array.prototype.map.call(new Uint8Array(buf), function (b) { return ("0" + b.toString(16)).slice(-2); }).join("").slice(0, 12);
+      });
+    } catch (e) { return Promise.resolve(null); }
+  }
+  init.materials = function () {
+    var tabs = $("#id-tabs"), sel = 0, dup = false;
+    tabs.innerHTML = TABS.map(function (t, i) { return '<button class="stab" type="button" role="tab" data-i="' + i + '" aria-selected="' + (i === 0) + '">' + esc(t.length > 18 ? t.slice(0, 16) + "…" : t) + "</button>"; }).join("");
+    function bump(el, txt) { if (el.textContent === txt) return; el.textContent = txt; replay(el, "bump"); setTimeout(function () { el.classList.remove("bump"); }, 30); }
+    function render() {
+      $$(".stab", tabs).forEach(function (b) { b.setAttribute("aria-selected", String(+b.dataset.i === sel)); });
+      var t = TABS[sel];
+      bump($("#id-title"), t);
+      bump($("#id-win"), dup ? "5307" : "4182");
+      $("#id-w2t").textContent = t;
+      $("#id-w2").classList.toggle("show", dup);
+      $("#id-w1").style.opacity = dup ? ".55" : "1";
+      sha12(t + "\0com.apple.Safari").then(function (h) { bump($("#id-mat"), h ? "mat_" + h : "mat_…"); });
+    }
+    tabs.addEventListener("click", function (e) { var b = e.target.closest(".stab"); if (b) { sel = +b.dataset.i; render(); } });
+    $("#id-dup").addEventListener("click", function () { dup = !dup; this.setAttribute("aria-pressed", String(dup)); render(); });
+    $("#id-w1").style.transition = "opacity .4s";
+    render();
+
+    /* frames */
+    var TICKS = [
+      { r: "APPEAR", d: -1 }, { r: "2 s", d: 1 }, { r: "2 s", d: 0 }, { r: "scroll", d: 15 }, { r: "2 s", d: 3 }, { r: "type", d: 6 },
+      { r: "2 s", d: 9 }, { r: "2 s", d: 2 }, { r: "scroll", d: 18 }, { r: "UNFOCUS", d: 4 }, { r: "FOCUSED", d: 1 }, { r: "video", d: 12 }
+    ];
+    var bars = $("#fr-bars"), lbl = $("#fr-lbl"), strip = $("#fr-strip"), th = $("#fr-th"), MAX = 20;
+    var tip = document.createElement("div"); tip.className = "ftip"; bars.appendChild(tip);
+    TICKS.forEach(function (t, i) {
+      var b = document.createElement("div"); b.className = "bar"; b.innerHTML = "<i></i>"; b.dataset.i = i; bars.appendChild(b);
+      var l = document.createElement("span"); l.textContent = t.r; lbl.appendChild(l);
+    });
+    var barEls = $$(".bar", bars);
+    function run() {
+      var T = +th.value, kept = 0, scroll = 0;
+      $("#fr-tho").textContent = T;
+      $("#fr-thr").style.bottom = (T / MAX * 100) + "%";
+      strip.innerHTML = "";
+      TICKS.forEach(function (t, i) {
+        var d = t.d < 0 ? MAX : t.d, keep = t.d < 0 || t.d >= T;
+        scroll += t.d > 0 ? t.d : 0;
+        barEls[i].classList.toggle("keep", keep);
+        barEls[i].querySelector("i").style.height = Math.max(2, d / MAX * 100) + "%";
+        barEls[i].dataset.tip = t.d < 0 ? "First frame · always kept" : "distance " + t.d + (keep ? " · kept" : " · skipped");
+        if (keep) {
+          kept++;
+          var th2 = document.createElement("div"); th2.className = "thumb"; th2.style.animationDelay = (calm ? 0 : kept * 30) + "ms";
+          var off = (scroll * 3) % 9;
+          th2.innerHTML = '<i style="width:70%;margin-top:' + (-off) + 'px"></i><i style="width:90%"></i><i style="width:55%"></i><i style="width:80%"></i><i style="width:65%"></i>';
+          strip.appendChild(th2);
+        }
+      });
+      $("#fr-cap").textContent = kept + " of " + TICKS.length + " captures kept. Default threshold is 8.";
+    }
+    th.addEventListener("input", run);
+    bars.addEventListener("mousemove", function (e) {
+      var b = e.target.closest(".bar"); if (!b) { tip.classList.remove("on"); return; }
+      var r = bars.getBoundingClientRect(), br = b.getBoundingClientRect(), bi = b.querySelector("i").getBoundingClientRect();
+      tip.textContent = TICKS[+b.dataset.i].r + " · " + b.dataset.tip;
+      tip.style.left = (br.left - r.left + br.width / 2) + "px"; tip.style.top = (bi.top - r.top - 6) + "px";
+      tip.classList.add("on");
+    });
+    bars.addEventListener("mouseleave", function () { tip.classList.remove("on"); });
+    run();
+  };
+
+  /* ---------- 03 memory ---------- */
+  var TABLES = [
+    { id: "materials", col: 0, s: "one row per material", w: "Created when a new title appears in a window. Updated on every focus.",
+      c: [["material_id", "PK"], ["title"], ["window_id"], ["application"], ["bundle_id"], ["document_path"], ["app_metadata_json"], ["first_seen"], ["last_seen"], ["total_time_ms"]] },
+    { id: "frames", col: 1, p: "materials", s: "kept window crops", w: "One row per kept frame. JPEG blob plus the perceptual hash that let it in.",
+      c: [["frame_id", "PK"], ["material_id", "FK"], ["timestamp"], ["width"], ["height"], ["data", "JPEG"], ["hash"], ["capture_reason"]] },
+    { id: "material_focus_sessions", col: 1, p: "materials", s: "how long you looked", w: "Written on every unfocus. Drives the weights below.",
+      c: [["session_id", "PK"], ["material_id", "FK"], ["started_at"], ["ended_at"], ["duration_ms"]] },
+    { id: "material_ocr_results", col: 1, p: "materials", s: "text on screen", w: "Apple Vision OCR over the frames of each focus session, deduplicated. Only with memory.ocrEnabled.",
+      c: [["material_id", "PK"], ["text"], ["line_count"], ["frame_count"], ["last_frame_ts"], ["updated_at"]] },
+    { id: "material_embeddings", col: 1, p: "materials", s: "semantic search", w: "384-d vectors (all-MiniLM-L6-v2) in sqlite-vec, mapped to materials. Used by Material Chat search.",
+      c: [["embedding", "float[384]"], ["material_id", "via map"]] },
+    { id: "screenshots", col: 2, s: "your ⌘⇧4 captures", w: "One row per finished screenshot, with the selected region.",
+      c: [["screenshot_id", "PK"], ["timestamp"], ["data"], ["mime_type"], ["bounds_x · y · w · h"], ["screenshot_type"]] },
+    { id: "tasks", col: 2, s: "current state per task", w: "Upserted from TaskEvents. One row per task id.",
+      c: [["task_id", "PK"], ["label"], ["description"], ["application"], ["confidence"], ["status"], ["level"], ["first_seen"], ["last_seen"]] },
+    { id: "task_events", col: 2, p: "tasks", s: "every transition", w: "Append-only history: each DETECTED, UPDATED and COMPLETED, with model latency.",
+      c: [["id", "PK"], ["task_id", "FK"], ["status"], ["label"], ["confidence"], ["timestamp"], ["request_ts"], ["response_ts"]] }
+  ];
+  var erdSel = "materials";
+  init.memory = function () {
+    var cols = $$("#erd .ecol");
+    TABLES.forEach(function (t) {
+      var b = document.createElement("button"); b.type = "button"; b.className = "tb"; b.dataset.t = t.id;
+      b.innerHTML = "<b>" + esc(t.id) + "</b><small>" + esc(t.s) + "</small>";
+      if (t.id === "tasks") { var cap = document.createElement("div"); cap.className = "ecap"; cap.style.marginTop = "10px"; cap.textContent = "Tasks"; cols[2].appendChild(cap); }
+      cols[t.col].appendChild(b);
+    });
+    $("#erd").addEventListener("click", function (e) { var b = e.target.closest(".tb"); if (b) selectTable(b.dataset.t); });
+    selectTable("materials", true);
+    window.addEventListener("resize", function () { if (!pages.memory.hidden) drawErd(); });
+    initDecay();
+  };
+  function related(id) {
+    var t = TABLES.filter(function (x) { return x.id === id; })[0], out = [];
+    TABLES.forEach(function (x) { if (x.p === id) out.push(x.id); });
+    if (t.p) out.push(t.p);
+    return out;
+  }
+  function selectTable(id, first) {
+    erdSel = id;
+    var rel = related(id), t = TABLES.filter(function (x) { return x.id === id; })[0];
+    $("#erd").classList.add("focus");
+    $$("#erd .tb").forEach(function (b) { b.classList.toggle("on", b.dataset.t === id); b.classList.toggle("rel", rel.indexOf(b.dataset.t) >= 0); });
+    var d = $("#erd-detail");
+    d.innerHTML = "<div><h4>" + esc(t.id) + "</h4><p>" + esc(t.w) + "</p></div><ul class=\"cols\">" +
+      t.c.map(function (c) { return "<li>" + esc(c[0]) + (c[1] ? "<em>" + esc(c[1]) + "</em>" : "") + "</li>"; }).join("") + "</ul>";
+    if (!first) replay(d, "swap");
+    drawErd();
+  }
+  function drawErd() {
+    var erd = $("#erd"), svg = $("#erd-svg"); if (!erd || erd.offsetParent === null) return;
+    var r = erd.getBoundingClientRect(), html = "";
+    function box(id) { var b = $('.tb[data-t="' + id + '"]', erd); return b && b.getBoundingClientRect(); }
+    TABLES.forEach(function (t) {
+      if (!t.p) return;
+      var a = box(t.p), b = box(t.id); if (!a || !b) return;
+      var on = erdSel === t.id || erdSel === t.p;
+      var x1, y1, x2, y2;
+      if (Math.abs(a.left - b.left) < 4) { // same column: bracket on the left
+        x1 = a.left - r.left; y1 = a.top - r.top + a.height / 2; x2 = b.left - r.left; y2 = b.top - r.top + b.height / 2;
+        html += '<path class="' + (on ? "on" : "") + '" d="M' + x1 + " " + y1 + " C" + (x1 - 22) + " " + y1 + " " + (x2 - 22) + " " + y2 + " " + x2 + " " + y2 + '"/>';
+      } else {
+        x1 = a.right - r.left; y1 = a.top - r.top + Math.min(a.height / 2, 22); x2 = b.left - r.left; y2 = b.top - r.top + b.height / 2;
+        var mx = (x1 + x2) / 2;
+        html += '<path class="' + (on ? "on" : "") + '" d="M' + x1 + " " + y1 + " C" + mx + " " + y1 + " " + mx + " " + y2 + " " + x2 + " " + y2 + '"/>';
+      }
+    });
+    svg.innerHTML = html;
+  }
+  function initDecay() {
+    var host = $("#dc"), h = $("#dc-h"), W = 640, H = 190, P = { l: 34, r: 12, t: 12, b: 26 }, DAYS = 60;
+    host.innerHTML = '<svg viewBox="0 0 ' + W + " " + H + '" preserveAspectRatio="none" role="img" aria-label="Decay curve"></svg>';
+    var svg = $("svg", host);
+    var x = function (d) { return P.l + d / DAYS * (W - P.l - P.r); };
+    var y = function (v) { return P.t + (1 - v) * (H - P.t - P.b); };
+    var hover = null;
+    function draw() {
+      var hl = +h.value, lam = Math.LN2 / hl, pts = [], g = "";
+      $("#dc-ho").textContent = hl + (hl === 1 ? " day" : " days");
+      for (var d = 0; d <= DAYS; d += .5) pts.push([x(d), y(Math.exp(-lam * d))]);
+      [0, .5, 1].forEach(function (v) { g += '<line class="grid" x1="' + P.l + '" x2="' + (W - P.r) + '" y1="' + y(v) + '" y2="' + y(v) + '"/><text class="tk" x="' + (P.l - 8) + '" y="' + (y(v) + 3.5) + '" text-anchor="end">' + Math.round(v * 100) + "%</text>"; });
+      [0, 7, 30, 60].forEach(function (d) { g += '<text class="tk" x="' + x(d) + '" y="' + (H - 8) + '" text-anchor="middle">' + (d === 0 ? "today" : d + "d") + "</text>"; });
+      var line = "M" + pts.map(function (p) { return p[0].toFixed(1) + " " + p[1].toFixed(1); }).join(" L");
+      g += '<path class="area" d="' + line + " L" + x(DAYS) + " " + y(0) + " L" + x(0) + " " + y(0) + 'Z"/>';
+      g += '<path class="ln" d="' + line + '"/>';
+      var hd = hover == null ? hl : hover, hv = Math.exp(-lam * hd);
+      g += '<line class="cross" x1="' + x(hd) + '" x2="' + x(hd) + '" y1="' + P.t + '" y2="' + y(0) + '"/>';
+      g += '<circle class="mk" cx="' + x(hd) + '" cy="' + y(hv) + '" r="4.5"/>';
+      var right = x(hd) > W * .7;
+      g += '<text class="lbl" x="' + (x(hd) + (right ? -10 : 10)) + '" y="' + (y(hv) - 10) + '" text-anchor="' + (right ? "end" : "start") + '">' + (Math.round(hd * 2) / 2) + "d ago · " + Math.round(hv * 100) + "%</text>";
+      svg.innerHTML = g;
+    }
+    h.addEventListener("input", draw);
+    svg.addEventListener("pointermove", function (e) {
+      var r = svg.getBoundingClientRect(), px = (e.clientX - r.left) / r.width * W;
+      hover = Math.max(0, Math.min(DAYS, (px - P.l) / (W - P.l - P.r) * DAYS)); draw();
+    });
+    svg.addEventListener("pointerleave", function () { hover = null; draw(); });
+    draw();
+  }
+
+  /* ---------- 04 tasks ---------- */
+  var PIPE = {
+    frame: "<b>The focused window's latest kept frame</b>, downsized to JPEG right before the call. Not the full screen.",
+    events: "<b>A rolling buffer</b> of recent events, filtered to the focused app. The last 40 go into the prompt.",
+    group: "<b>Detectors that want the same inputs share one call.</b> Same <code>sources</code> + <code>events</code> means same group. <code>isolated: true</code> gets its own.",
+    call: "<b>Each group runs on its own timer</b> (<code>interval</code>), or on every new frame with <code>trigger: screen</code>. The model returns which rules fired.",
+    detector: "<b>Each fired rule becomes a DetectorEvent</b> with <code>eventType</code>, <code>confidence</code>, <code>summary</code>, <code>evidence</code>. Then it rests for <code>cooldown</code> ms.",
+    task: "<b>The built-in <code>rapid-task</code> detector</b> only returns a short label. TaskTracker turns labels into stable task ids. Try it below."
+  };
+  init.tasks = function () {
+    var pipe = $("#pipe"), det = $("#pdetail"), order = ["frame", "events", "group", "call", "detector", "task"], timer = null, step = 0;
+    function pick(k, auto) {
+      $$(".pn", pipe).forEach(function (b) { b.setAttribute("aria-pressed", String(b.dataset.p === k)); });
+      det.innerHTML = PIPE[k];
+      if (!auto) { clearInterval(timer); timer = null; }
+    }
+    pipe.addEventListener("click", function (e) { var b = e.target.closest(".pn"); if (b) pick(b.dataset.p); });
+    pick("frame", true);
+    if (!calm) {
+      timer = setInterval(function () {
+        if (pages.tasks.hidden) return;
+        step = (step + 1) % order.length;
+        var b = $('.pn[data-p="' + order[step] + '"]', pipe); replay(b, "pulse"); pick(order[step], true);
+      }, 2600);
+    }
+    initTracker();
+    initDetectorFile();
+  };
+
+  /* TaskTracker: ported from packages/core/src/detectors/TaskTracker.ts */
+  function norm(v) { return v.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim(); }
+  function overlap(a, b) {
+    var ta = new Set(a.split(" ").filter(function (w) { return w.length > 2; })), tb = new Set(b.split(" ").filter(function (w) { return w.length > 2; }));
+    if (!ta.size || !tb.size) return 0;
+    var n = 0; ta.forEach(function (t) { if (tb.has(t)) n++; });
+    return n / Math.min(ta.size, tb.size);
+  }
+  function simText(a, b) { var na = norm(a), nb = norm(b); if (!na || !nb) return false; return na === nb || overlap(na, nb) >= .6; }
+  function simLabel(a, b) { var na = norm(a), nb = norm(b); if (!na || !nb) return false; return na === nb || overlap(na, nb) >= .7; }
+  function sameWork(pl, pd, nl, nd) { return simLabel(pl, nl) && (simText(pd, nd) || simText(pl + " " + pd, nl + " " + nd)); }
+  var SAY = [
+    { l: "Reading paper", d: "Understanding and Using Context, Safari" },
+    { l: "Reading paper", d: "Understanding and Using Context, definitions section" },
+    { l: "Writing notes", d: "study plan in Notes" },
+    { l: "Writing notes", d: "weekly study schedule draft" },
+    { l: "Reading paper", d: "Understanding and Using Context, Safari" }
+  ];
+  function initTracker() {
+    var cur = null, n = 0, log = $("#tt-log"), say = $("#tt-say");
+    say.innerHTML = SAY.map(function (s, i) { return '<button class="chip" type="button" data-i="' + i + '">' + esc(s.l) + "<small>" + esc(s.d) + "</small></button>"; }).join("");
+    function pct(x) { return Math.round(x * 100) + "%"; }
+    function add(status, task) {
+      var li = document.createElement("li");
+      li.innerHTML = '<div class="card fresh"><span class="card-k">' + task.id + '</span><span class="card-s"><span class="tag">' + status + "</span>" + esc(task.l) + "</span></div>";
+      log.insertBefore(li, log.firstChild);
+      var c = li.firstChild; setTimeout(function () { c.classList.remove("fresh"); }, 2200);
+      if (!calm && li.animate) li.animate([{ opacity: 0, transform: "translateY(-6px)" }, { opacity: 1, transform: "none" }], { duration: 380, easing: "cubic-bezier(.22,1,.36,1)" });
+    }
+    function apply(l, d) {
+      l = l.trim(); d = (d || "").trim() || l; if (!l) return;
+      var action, why;
+      if (!cur) { action = "begin"; why = "No current task, so it begins one."; }
+      else {
+        var lo = overlap(norm(cur.l), norm(l)), dov = overlap(norm(cur.d), norm(d));
+        var lab = "label " + (norm(cur.l) === norm(l) ? "identical" : pct(lo)) + ", description " + (norm(cur.d) === norm(d) ? "identical" : pct(dov)) + ". ";
+        if (sameWork(cur.l, cur.d, l, d)) {
+          action = simText(cur.d, d) ? "continue" : "update";
+          why = lab + (action === "continue" ? "Same work, same id." : "Same work, new detail. Same id, updated.");
+        } else { action = "switch"; why = lab + "Different work: the old task completes, a new one begins."; }
+      }
+      if (action === "begin" || action === "switch") {
+        if (cur) add("COMPLETED", cur);
+        cur = { id: "task_" + (++n), l: l, d: d }; add("DETECTED", cur);
+      } else { cur.l = l; cur.d = d; add("UPDATED", cur); }
+      $("#tt-cur").innerHTML = "<b>Current task</b><span>" + esc(cur.l) + "</span><code>" + cur.id + " · " + esc(cur.d) + "</code>";
+      $("#tt-why").innerHTML = "<code>" + action + "</code> · " + esc(why);
+    }
+    say.addEventListener("click", function (e) { var b = e.target.closest(".chip"); if (!b) return; var s = SAY[+b.dataset.i]; b.classList.add("used"); apply(s.l, s.d); });
+    $("#tt-form").addEventListener("submit", function (e) { e.preventDefault(); var v = $("#tt-input").value; var p = v.split(":"); apply(p[0], p.slice(1).join(":")); $("#tt-input").value = ""; });
+    $("#tt-reset").addEventListener("click", function () { cur = null; n = 0; log.innerHTML = ""; $("#tt-cur").innerHTML = "<b>Current task</b><span>None</span>"; $("#tt-why").textContent = ""; $$(".chip", say).forEach(function (c) { c.classList.remove("used"); }); });
+    $("#tt-input").placeholder = "Or type “label: detail”…";
+  }
+
+  var DMD = {
+    name: ["name", "Folder-unique id. Shows up as detectorName."],
+    event: ["event", "The eventType you filter on. task is reserved for task tracking."],
+    trigger: ["trigger", "interval runs on a timer. screen runs on every new kept frame."],
+    interval: ["interval", "Milliseconds between checks. Defaults to cooldown."],
+    cooldown: ["cooldown", "Milliseconds to stay quiet after firing."],
+    sources: ["sources", "What the model sees: screen, events, or both. Part of the group key."],
+    events: ["events", "Which event kinds enter the prompt. Also part of the group key."],
+    isolated: ["isolated", "true gives this detector its own model call instead of sharing."],
+    body: ["body", "Plain-language rules. Write them like you'd brief a person."]
+  };
+  function initDetectorFile() {
+    var pre = $("#dmd"), x = $("#dmd-x");
+    function show(k) {
+      $$("span", pre).forEach(function (s) { s.classList.toggle("on", s.dataset.k === k); });
+      x.innerHTML = "<code>" + esc(DMD[k][0]) + "</code><p>" + esc(DMD[k][1]) + "</p>";
+    }
+    pre.addEventListener("mouseover", function (e) { var s = e.target.closest("span[data-k]"); if (s) show(s.dataset.k); });
+    pre.addEventListener("click", function (e) { var s = e.target.closest("span[data-k]"); if (s) show(s.dataset.k); });
+    show("event");
+  }
+
+  /* ---------- 05 models ---------- */
+  var REQ = {
+    system: ["Same for every call. Defines the job and the only allowed output shape.", "You are a screen activity analyzer. You evaluate\ndetection rules against screenshots and recent\nuser activity events…\n\nRespond ONLY with compact JSON."],
+    state: ["Added when a task is active, so the model can tell if you're still on it.", "## Current Task State\nCurrent task: \"Reading paper\" — Understanding\nand Using Context (id: task_1)"],
+    specs: ["Name, description and body of each detector in this group.", "## Active Detectors\n[stuck-on-error]\nDescription: Notices repeated errors\nRules:\nFire when the same error stays on screen…"],
+    events: ["Oldest to newest, one line each, filtered to the focused app.", "## Recent Activity (oldest → newest)\n  14:02:11 window-state FOCUSED Safari\n  14:02:19 text-selection MOUSE 48 chars\n  14:02:21 copy-paste COPY TEXT"],
+    image: ["The focused material's latest frame, resized only if it's over the size limit.", "image/jpeg · focused window only\n(omitted when sources has no screen)"],
+    out: ["Only rules that clearly fired. An empty list is the common case.", "{\"triggered\":[{\n  \"name\": \"stuck-on-error\",\n  \"confidence\": 0.82,\n  \"summary\": \"TypeError in runtime.ts line 88\",\n  \"evidence\": \"Copied error, same frame 3×\"\n}]}"]
+  };
+  var PROV = {
+    cerebras: {
+      code: "createRuntime({\n  detectorPipeline: { provider: 'cerebras' },  <span class=\"c\">// key from env</span>\n});",
+      env: [["CEREBRAS_API_KEY", "Required"], ["TASK_DETECTOR_PROVIDER=cerebras", "Instead of the config field"], ["model", "Default gemma-4-31b"]]
+    },
+    vertex: {
+      code: "createRuntime({\n  detectorPipeline: {\n    provider: 'vertex',\n    projectId: 'my-gcp-project',\n    location: 'global',\n  },\n});",
+      env: [["TASK_DETECTOR_PROJECT_ID", "Instead of projectId"], ["gcloud auth application-default login", "Auth, once per machine"], ["model", "Default gemini-2.0-flash"]]
+    },
+    compat: {
+      code: "createRuntime({\n  detectorPipeline: {\n    provider: 'cerebras',               <span class=\"c\">// OpenAI-style client</span>\n    apiBaseUrl: 'http://localhost:8000/v1',\n    apiKey: 'local',\n    model: 'my-vision-model',\n  },\n});",
+      env: [["CEREBRAS_BASE_URL", "Instead of apiBaseUrl"], ["Endpoint", "POST {base}/chat/completions"], ["Must support", "image_url parts and json_object output"]]
+    }
+  };
+  init.models = function () {
+    var stack = $("#req-stack"), x = $("#req-x");
+    function pick(k, first) {
+      $$(".pn", stack).forEach(function (b) { b.setAttribute("aria-pressed", String(b.dataset.r === k)); });
+      x.innerHTML = "<p>" + esc(REQ[k][0]) + "</p><pre>" + esc(REQ[k][1]) + "</pre>";
+      if (!first) replay(x, "swap");
+    }
+    stack.addEventListener("click", function (e) { var b = e.target.closest(".pn"); if (b) pick(b.dataset.r); });
+    pick("system", true);
+    var tabs = $("#prov-tabs");
+    function prov(k) {
+      $$("button", tabs).forEach(function (b) { b.setAttribute("aria-selected", String(b.dataset.prov === k)); });
+      $("#prov-code").innerHTML = PROV[k].code;
+      $("#prov-env").innerHTML = PROV[k].env.map(function (r) { return "<tr><td><code>" + esc(r[0]) + "</code></td><td>" + esc(r[1]) + "</td></tr>"; }).join("");
+    }
+    tabs.addEventListener("click", function (e) { var b = e.target.closest("button[data-prov]"); if (b) prov(b.dataset.prov); });
+    prov("cerebras");
+  };
+})();
+</script>
+<script>
+(function () {
+  "use strict";
+  var $ = function (s, r) { return (r || document).querySelector(s); };
+  var $$ = function (s, r) { return Array.prototype.slice.call((r || document).querySelectorAll(s)); };
+  var esc = function (s) { return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;"); };
+
+  /* views */
+  var views = { home: $("#view-home"), docs: $("#view-docs"), "agent-skill": $("#view-agent") }, current = null;
+  function show(name) {
+    if (!views[name]) name = "home";
+    var changed = name !== current; current = name;
+    Object.keys(views).forEach(function (k) { views[k].hidden = k !== name; });
+    $$(".nav [data-view]").forEach(function (b) { if (b.dataset.view === name) b.setAttribute("aria-current", "page"); else b.removeAttribute("aria-current"); });
+    if (changed) window.scrollTo(0, 0);
+  }
+  function route() { var h = (location.hash || "").slice(1); if (h.indexOf("docs") === 0) { var pg = h.split("/")[1] || "sensors"; var was = current; show("docs"); if (window.__ausmDoc) window.__ausmDoc(pg); if (was === "docs") window.scrollTo(0, 0); return; } show(h === "agent-skill" ? "agent-skill" : "home"); }
+  $$("[data-view]").forEach(function (b) { b.addEventListener("click", function () { location.hash = b.dataset.view === "home" ? "overview" : b.dataset.view === "docs" ? "docs/sensors" : b.dataset.view; }); });
+  window.addEventListener("hashchange", route); route();
+  $$('a[href="#start"]').forEach(function (a) { a.addEventListener("click", function (e) { e.preventDefault(); $("#start").scrollIntoView({ behavior: "smooth", block: "start" }); }); });
+
+  /* theme */
+  (function () {
+    var btn = $("#theme-btn"), root = document.documentElement;
+    function label() { btn.setAttribute("aria-label", root.getAttribute("data-theme") === "dark" ? "Switch to light theme" : "Switch to dark theme"); }
+    btn.addEventListener("click", function () {
+      var t = root.getAttribute("data-theme") === "dark" ? "light" : "dark";
+      root.setAttribute("data-theme", t); label();
+      try { localStorage.setItem("ausm-theme", t); } catch (e) {}
+    });
+    label();
+  })();
+
+  /* copy */
+  function copyText(text, btn) {
+    var old = btn.textContent;
+    var ok = function () { btn.textContent = "Copied"; setTimeout(function () { btn.textContent = old; }, 1400); };
+    var no = function () { btn.textContent = "Select and ⌘C"; setTimeout(function () { btn.textContent = old; }, 2000); };
+    try { navigator.clipboard.writeText(text).then(ok, no); } catch (e) { no(); }
+  }
+  $$("[data-copy]").forEach(function (b) { b.addEventListener("click", function () { copyText($(b.dataset.copy).textContent, b); }); });
+
+  /* install + code tabs */
+  var INSTALL = { npm: "npm install ausm", swift: '.package(url: "https://github.com/foundation-interface/AUSM.git", from: "0.1.0")' };
+  $$("[data-install]").forEach(function (b) { b.addEventListener("click", function () {
+    $$("[data-install]").forEach(function (o) { o.setAttribute("aria-selected", String(o === b)); });
+    var c = $("#install-code"); c.textContent = INSTALL[b.dataset.install]; c.classList.toggle("noprompt", b.dataset.install === "swift");
+  }); });
+  $$("[data-lang-tab]").forEach(function (b) { b.addEventListener("click", function () {
+    $$("[data-lang-tab]").forEach(function (o) { o.setAttribute("aria-selected", String(o === b)); });
+    $$("[data-tab]").forEach(function (el) { el.hidden = el.dataset.tab !== b.dataset.langTab; });
+  }); });
+
+  /* code highlighting: comments and strings only */
+  $$("pre.code").forEach(function (pre) {
+    var src = pre.textContent, out = "", i = 0;
+    while (i < src.length) {
+      var ch = src[i];
+      if (src.substr(i, 2) === "//") { var e = src.indexOf("\n", i); if (e < 0) e = src.length; out += '<span class="c">' + esc(src.slice(i, e)) + "</span>"; i = e; continue; }
+      if (ch === "'" || ch === '"') { var j = i + 1; while (j < src.length && src[j] !== ch && src[j] !== "\n") j++; out += '<span class="s">' + esc(src.slice(i, j + 1)) + "</span>"; i = j + 1; continue; }
+      out += esc(ch); i++;
+    }
+    pre.innerHTML = out;
+  });
+
+  /* skill file */
+  var skill = $("#skill-src").textContent.replace(/^\n/, ""), inFm = false, inCode = false, html = "";
+  skill.split("\n").forEach(function (ln, idx) {
+    var c = "";
+    if (idx === 0 && ln === "---") { inFm = true; c = "d"; }
+    else if (inFm) { c = "d"; if (ln === "---") inFm = false; }
+    else if (/^```/.test(ln)) { inCode = !inCode; c = "d"; }
+    else if (inCode) c = "i";
+    else if (/^#{1,3}\s/.test(ln)) c = "h";
+    html += '<span class="l"><span class="' + c + '">' + (esc(ln) || " ") + "</span></span>";
+  });
+  $("#skill-view").innerHTML = html;
+  $("#copy-skill").addEventListener("click", function () { copyText(skill, $("#copy-skill")); });
+
+  /* simulated stream */
+  var screen = $("#screen"), seq = 0;
+  var W = {
+    notes:  { el: $("#w-notes"),  app: "Notes",  id: "com.apple.Notes",  win: 4182, title: "draft.md", mat: "mat_7c21e0", type: "DOCUMENT_EDITOR" },
+    safari: { el: $("#w-safari"), app: "Safari", id: "com.apple.Safari", win: 4190, title: "Understanding and Using Context", mat: "mat_e04b9a", type: "WEB_NON_EDITABLE_TEXT" }
+  };
+  var NOW = Date.now(), MIN = 60000;
+  // Mirrors the memory store: one row per material, plus counts from frames, focus sessions and OCR.
+  var MATS = [
+    { materialId: "mat_e04b9a", title: "Understanding and Using Context", application: "Safari", bundleId: "com.apple.Safari", windowId: 4190, documentPath: "https://dl.acm.org/doi/10.1007/s007790170019", frames: 2, sessions: 2, focusMs: 4 * MIN + 12000, events: 0, ocr: "Context is any information that can be used to characterize…", firstSeen: NOW - 41 * MIN, lastSeen: NOW - 6 * MIN, task: "Reading paper: Understanding and Using Context" },
+    { materialId: "mat_a91c33", title: "foundation-interface/AUSM", application: "Safari", bundleId: "com.apple.Safari", windowId: 4190, documentPath: "https://github.com/foundation-interface/AUSM", frames: 1, sessions: 1, focusMs: 58000, events: 0, ocr: "Sensors, materials and task detectors…", firstSeen: NOW - 18 * MIN, lastSeen: NOW - 15 * MIN, task: "Browsing code: AUSM repo" },
+    { materialId: "mat_7c21e0", title: "draft.md", application: "Notes", bundleId: "com.apple.Notes", windowId: 4182, documentPath: "~/Notes/draft.md", frames: 3, sessions: 4, focusMs: 9 * MIN + 30000, events: 0, ocr: "Study plan, week 3. Most context switches…", firstSeen: NOW - 52 * MIN, lastSeen: NOW, task: "Writing notes: study plan" },
+    { materialId: "mat_5d02f1", title: "#study-design", application: "Slack", bundleId: "com.tinyspeck.slackmacgap", windowId: 3977, documentPath: null, frames: 4, sessions: 3, focusMs: 6 * MIN + 5000, events: 0, ocr: "Can we log copy events per participant?", firstSeen: NOW - 95 * MIN, lastSeen: NOW - 12 * MIN, task: "" }
+  ];
+  var M = {}; MATS.forEach(function (m) { M[m.materialId] = m; });
+  var TABS = ["mat_e04b9a", "mat_a91c33"], activeTab = 0;
+  var focused = "notes", z = 3, task = null, since = 0, timer = null;
+  function short(s, n) { s = String(s || ""); return s.length > n ? s.slice(0, n - 1) + "…" : s; }
+  function jsonHtml(o) { return esc(JSON.stringify(o, null, 2)).replace(/: (".*?")(,?)$/gm, function (_, v, c) { return ': <span class="v">' + v + "</span>" + c; }); }
+  var LANES = { task: $("#lane-tasks") }, sensorLane = $("#lane-sensors"), selected = null;
+  var LABEL = { windowState: "window", textSelection: "selection", copyPaste: "clipboard", textInput: "typing", screenshot: "screenshot", material: "material", task: "rapid-task" };
+  var pop = $("#pop"), popBody = $("#pop-body"), popFor = null, pinned = false, hideT = null;
+  var popPos = null, popTgt = { x: 0, y: 0 }, popRaf = 0, ptr = null;
+  var reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  // Target: beside the card, vertically following the pointer while it's inside the card.
+  function target(card) {
+    var r = card.getBoundingClientRect(), pw = pop.offsetWidth, ph = pop.offsetHeight, vw = innerWidth, vh = innerHeight, g = 14, x, y;
+    var py = ptr && !pinned ? ptr.y : r.top + 12, px = ptr && !pinned ? ptr.x : r.left;
+    if (r.left - pw - g >= 16) { x = r.left - pw - g + (px - r.left) * .06; y = py - 22; }
+    else if (r.right + pw + g <= vw - 16) { x = r.right + g + (px - r.left) * .06; y = py - 22; }
+    else { x = Math.min(Math.max(16, px - pw / 2), vw - pw - 16); y = r.bottom + 10; if (y + ph > vh - 16) y = r.top - ph - 10; }
+    popTgt.x = Math.round(x); popTgt.y = Math.round(Math.min(Math.max(16, y), vh - ph - 16));
+  }
+  function glide() {
+    if (!popPos || reduce) { popPos = { x: popTgt.x, y: popTgt.y }; }
+    else { popPos.x += (popTgt.x - popPos.x) * .18; popPos.y += (popTgt.y - popPos.y) * .18; }
+    pop.style.transform = "translate(" + popPos.x.toFixed(1) + "px," + popPos.y.toFixed(1) + "px)";
+    popRaf = Math.abs(popTgt.x - popPos.x) + Math.abs(popTgt.y - popPos.y) > .4 ? requestAnimationFrame(glide) : 0;
+  }
+  function kick() { if (!popRaf) popRaf = requestAnimationFrame(glide); }
+  function fill(card) {
+    $("#pop-m").textContent = card._label || ("runtime." + card._method + "(e)");
+    $("#pop-json").innerHTML = jsonHtml(card._get ? card._get() : card._ev);
+  }
+  function openPop(card, pin) {
+    clearTimeout(hideT);
+    var showing = !pop.hidden && pop.classList.contains("on");
+    if (popFor && popFor !== card) popFor.setAttribute("aria-pressed", "false");
+    var changed = popFor !== card;
+    popFor = card; pinned = !!pin;
+    if (changed) {
+      fill(card);
+      if (showing && !reduce) { popBody.classList.add("swap"); void popBody.offsetWidth; popBody.classList.remove("swap"); }
+    }
+    pop.hidden = false; pop.classList.toggle("pinned", pinned);
+    target(card);
+    if (!showing) { popPos = null; glide(); requestAnimationFrame(function () { pop.classList.add("on"); }); }
+    else kick();
+    card.setAttribute("aria-pressed", String(pinned));
+  }
+  function closePop(now) {
+    if (!popFor) return;
+    var card = popFor;
+    clearTimeout(hideT);
+    hideT = setTimeout(function () {
+      if (popFor !== card) return;
+      card.setAttribute("aria-pressed", "false"); popFor = null; pinned = false;
+      pop.classList.remove("on", "pinned");
+      setTimeout(function () { if (!popFor) { pop.hidden = true; popPos = null; } }, 200);
+    }, now ? 0 : 140);
+  }
+  function wireCard(card) {
+    card.addEventListener("mouseenter", function (e) { ptr = { x: e.clientX, y: e.clientY }; if (!pinned) openPop(card, false); });
+    card.addEventListener("mousemove", function (e) { ptr = { x: e.clientX, y: e.clientY }; if (popFor === card && !pinned) { target(card); kick(); } });
+    card.addEventListener("mouseleave", function () { if (!pinned) closePop(); });
+    card.addEventListener("focus", function () { if (!pinned) { ptr = null; openPop(card, false); } });
+    card.addEventListener("blur", function () { if (!pinned) closePop(); });
+    card.addEventListener("click", function (e) { e.stopPropagation(); if (pinned && popFor === card) closePop(true); else openPop(card, true); });
+  }
+  document.addEventListener("click", function (e) { if (pinned && !pop.contains(e.target)) closePop(true); });
+  document.addEventListener("keydown", function (e) { if (e.key === "Escape") closePop(true); });
+  window.addEventListener("scroll", function () { if (popFor) closePop(true); }, { passive: true });
+  var calm = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  var EASE = "cubic-bezier(.22, 1, .36, 1)";
+  function insertCard(lane, li, card) {
+    // FLIP: existing cards glide down instead of jumping.
+    var olds = Array.prototype.slice.call(lane.children), before = olds.map(function (o) { return o.getBoundingClientRect().top; });
+    olds.forEach(function (o) { var c = o.firstChild; if (c && c.classList.contains("fresh")) { clearTimeout(c._fade); c.classList.remove("fresh"); } });
+    lane.insertBefore(li, lane.firstChild);
+    lane.scrollTop = 0;
+    while (lane.children.length > 30) lane.removeChild(lane.lastChild);
+    card._fade = setTimeout(function () { card.classList.remove("fresh"); }, 2600);
+    if (calm || !li.animate) return;
+    olds.forEach(function (o, i) {
+      if (!o.isConnected) return;
+      var dy = before[i] - o.getBoundingClientRect().top;
+      if (dy) o.animate([{ transform: "translateY(" + dy + "px)" }, { transform: "none" }], { duration: 520, easing: EASE, delay: Math.min(i, 6) * 18 });
+    });
+    li.animate([
+      { opacity: 0, transform: "translateY(-10px) scale(.96)", filter: "blur(3px)" },
+      { opacity: 1, transform: "none", filter: "blur(0)" }
+    ], { duration: 560, easing: EASE });
+  }
+  function emit(method, kind, data, summary) {
+    seq += 1;
+    var ev = Object.assign({ kind: kind, eventID: "evt_" + Date.now().toString(36).slice(-5) + seq, timestamp: Date.now(), displayID: "1" }, data);
+    var lane = LANES[kind] || sensorLane;
+    var li = document.createElement("li");
+    var mm = /^([A-Z][A-Z_]+) · (.*)$/.exec(summary);
+    var body = mm ? '<span class="tag">' + mm[1].toLowerCase().replace(/_/g, " ") + "</span>" + esc(mm[2]) : esc(summary);
+    li.innerHTML = '<button class="card fresh" type="button" aria-pressed="false"><span class="card-k">' + (LABEL[kind] || kind) + '</span><span class="card-s">' + body + "</span></button>";
+    var card = li.firstChild; card._ev = ev; card._method = method;
+    wireCard(card);
+    insertCard(lane, li, card);
+    if (kind !== "task") { since += 1; scheduleTask(); }
+    if (kind !== "task" && kind !== "windowState") { M[W[focused].mat].events += 1; renderRow(W[focused].mat, "events"); }
+    return card;
+  }
+  function scheduleTask() {
+    clearTimeout(timer);
+    var w = W[focused], changed = !task || task.label !== M[w.mat].task;
+    if (!changed && since < 5) return;
+    var ms = 480 + Math.round(Math.random() * 380);
+    timer = setTimeout(function () {
+      var w2 = W[focused], label = M[w2.mat].task;
+      if (task && task.label !== label) { emit("onTaskEvent", "task", { status: "TASK_COMPLETED", taskId: task.id, taskLabel: task.label, detectorName: "rapid-task" }, "DONE · " + task.label); task = null; }
+      var status = task ? "TASK_UPDATED" : "TASK_DETECTED";
+      if (!task) task = { id: "task_" + Math.random().toString(36).slice(2, 7), label: label };
+      emit("onTaskEvent", "task", { status: status, taskId: task.id, level: "leaf", taskLabel: task.label, confidence: 0.86, application: w2.app, detectorName: "rapid-task", modelLatencyMs: ms }, status.replace("TASK_", "") + " · " + task.label);
+      since = 0;
+    }, ms);
+  }
+  function focus(name, quiet) {
+    if (name === focused && !quiet) return;
+    var prev = focused; focused = name;
+    Object.keys(W).forEach(function (k) { W[k].el.classList.toggle("dim", k !== name); });
+    Object.keys(W).forEach(function (k) { W[k].el.style.zIndex = k === name ? 2 : 1; }); $("#mb-app").textContent = W[name].app;
+    if (quiet) return;
+    var p = W[prev], w = W[name];
+    emit("onApplicationSwitchEvent", "windowState", { state: "UNFOCUSED", application: p.app, bundleId: p.id, windowId: p.win, title: p.title }, "UNFOCUSED · " + p.app);
+    emit("onApplicationSwitchEvent", "windowState", { state: "FOCUSED", application: w.app, bundleId: w.id, windowId: w.win, title: w.title }, "FOCUSED · " + w.app);
+    matSwitch(p.mat, w.mat);
+  }
+  Object.keys(W).forEach(function (k) { W[k].el.addEventListener("pointerdown", function () { focus(k); }); });
+
+  /* materials tree */
+  var tree = $("#mat-tree"), rows = {};
+  function fmt(ms) { var s2 = Math.round(ms / 1000), m = Math.floor(s2 / 60); return m + ":" + String(s2 % 60).padStart(2, "0"); }
+  function ago(t) { var m = Math.round((Date.now() - t) / MIN); return m < 1 ? "now" : m + " min ago"; }
+  function record(m) {
+    return { materialId: m.materialId, title: m.title, application: m.application, bundleId: m.bundleId, windowId: m.windowId, documentPath: m.documentPath,
+      firstSeen: m.firstSeen, lastSeen: m.lastSeen, frames: m.frames, focusSessions: m.sessions, focusMs: m.focusMs, events: m.events, ocrText: m.ocr };
+  }
+  var groupOf = {}, GROUPS = [];
+  function buildTree() {
+    MATS.forEach(function (m) {
+      var key = m.application + ":" + m.windowId, g = GROUPS.filter(function (x) { return x.key === key; })[0];
+      if (!g) { g = { key: key, app: m.application, win: m.windowId, mats: [] }; GROUPS.push(g); }
+      g.mats.push(m); groupOf[m.materialId] = g;
+    });
+    tree.innerHTML = "";
+    GROUPS.forEach(function (g) {
+      var el = document.createElement("div"); el.className = "grp"; g.el = el;
+      el.innerHTML = '<div class="grp-h"><b>' + esc(g.app) + '</b><span class="w">window ' + g.win + "</span></div>" +
+        '<div class="grp-sub"><div></div></div><div class="grp-body"><div class="grp-in"></div></div>';
+      var inner = el.querySelector(".grp-in");
+      g.mats.forEach(function (m) {
+        var b = document.createElement("button"); b.type = "button"; b.className = "mrow";
+        b.innerHTML = '<span class="mrow-t">' + esc(m.title) + '</span><span class="mrow-m"></span>';
+        b._label = "runtime.getMaterials() · one row"; b._get = function () { return record(m); };
+        wireCard(b); inner.appendChild(b); rows[m.materialId] = b;
+      });
+      tree.appendChild(el);
+      g.mats.forEach(function (m) { renderRow(m.materialId); });
+    });
+  }
+  function renderGroup(g) {
+    var open = g.mats.some(function (m) { return W[focused].mat === m.materialId; });
+    g.el.classList.toggle("open", open);
+    var latest = Math.max.apply(null, g.mats.map(function (m) { return m.lastSeen; }));
+    g.el.querySelector(".grp-sub > div").textContent = (g.mats.length > 1 ? g.mats.length + " tabs" : g.mats[0].title) + " · " + ago(latest);
+  }
+  function renderRow(id, bump) {
+    var m = M[id], b = rows[id]; if (!b) return;
+    var on = W[focused].mat === id;
+    b.classList.toggle("on", on);
+    b.querySelector(".mrow-m").innerHTML =
+      '<i data-f="frames">' + m.frames + " frames</i> · " +
+      '<i data-f="events">' + m.events + " events</i> · " +
+      '<i data-f="time">' + (on ? fmt(m.focusMs) : ago(m.lastSeen)) + "</i>";
+    if (bump) { var i = b.querySelector('[data-f="' + bump + '"]'); if (i) { i.classList.add("bump"); setTimeout(function () { i.classList.remove("bump"); }, 60); } }
+    if (groupOf[id] && groupOf[id].el) renderGroup(groupOf[id]);
+  }
+  function matSwitch(fromId, toId) {
+    if (fromId === toId) return;
+    var a = M[fromId], b = M[toId];
+    a.lastSeen = Date.now(); a.frames += 1; a.sessions += 1; renderRow(fromId, "frames");   // frame captured on unfocus
+    b.lastSeen = Date.now(); renderRow(toId);
+    setTimeout(function () { b.frames += 1; renderRow(toId, "frames"); }, 450);              // and shortly after focus
+    if (rows[toId] && !calm && rows[toId].animate) rows[toId].animate([{ transform: "scale(.97)" }, { transform: "none" }], { duration: 420, easing: EASE });
+  }
+  setInterval(function () {
+    if (document.hidden) return;
+    var id = W[focused].mat; M[id].focusMs += 1000; renderRow(id);
+  }, 1000);
+
+  /* safari tabs: one window, several materials */
+  function switchTab(i) {
+    if (focused !== "safari") focus("safari");
+    if (i === activeTab) return;
+    var from = TABS[activeTab], to = TABS[i], oldTitle = W.safari.title;
+    activeTab = i;
+    $$(".stab").forEach(function (t) { t.setAttribute("aria-selected", String(+t.dataset.tab === i)); });
+    $$('#w-safari [data-pane]').forEach(function (pn) { pn.hidden = +pn.dataset.pane !== i; });
+    W.safari.mat = to; W.safari.title = M[to].title;
+    emit("onApplicationSwitchEvent", "windowState", { state: "TITLE_CHANGED", application: "Safari", bundleId: W.safari.id, windowId: W.safari.win, title: W.safari.title, oldTitle: oldTitle }, "TITLE_CHANGED · " + short(W.safari.title, 28));
+    matSwitch(from, to);
+  }
+  $$(".stab").forEach(function (t) { t.addEventListener("click", function (e) { e.stopPropagation(); switchTab(+t.dataset.tab); }); t.addEventListener("pointerdown", function (e) { e.stopPropagation(); if (focused !== "safari") focus("safari"); }); });
+
+  var lastSel = "";
+  function reportSel(el, method) {
+    var s = getSelection(); if (!s || !s.rangeCount || !el.contains(s.anchorNode)) return;
+    var t = String(s).replace(/\s+/g, " ").trim(); if (!t || t === lastSel) return; lastSel = t;
+    var w = W[el.dataset.src];
+    emit("onTextSelectionEvent", "textSelection", { selectedText: t, selectionMethod: method, selectionStage: "END", detectionSource: "NATIVE", sourceElement: { type: w.type, application: w.app, applicationID: w.id } }, "“" + short(t, 44) + "”");
+  }
+  $$(".sel").forEach(function (el) {
+    el.addEventListener("mouseup", function (e) { var m = e.detail >= 3 ? "TRIPLE_CLICK" : e.detail === 2 ? "DOUBLE_CLICK" : "MOUSE"; setTimeout(function () { reportSel(el, m); }, 0); });
+    el.addEventListener("keyup", function () { reportSel(el, "KEYBOARD"); });
+  });
+  document.addEventListener("selectionchange", function () { if (!String(getSelection() || "").trim()) lastSel = ""; });
+
+  function reportCopy() {
+    var t = String(getSelection() || "").replace(/\s+/g, " ").trim(); if (!t) return;
+    emit("onCopyPasteEvent", "copyPaste", { action: "COPY", contentType: "TEXT", content: t, changeCount: 120 + seq }, "COPY · " + t.length + " chars");
+  }
+  screen.addEventListener("copy", function () { setTimeout(reportCopy, 0); });
+  $("#copy-btn").addEventListener("pointerdown", function (e) { e.preventDefault(); e.stopPropagation(); });
+  $("#copy-btn").addEventListener("click", function (e) { e.stopPropagation(); reportCopy(); });
+
+  var inp = $("#note-input"), typing = false, tt = null, SRC = { type: "TEXT_FIELD", application: "Notes", applicationID: "com.apple.Notes" };
+  inp.addEventListener("focus", function () { focus("notes"); typing = true; emit("subscribeToTextInputEvent", "textInput", { status: "TEXT_INPUT_STARTED", text: inp.value, sourceElement: SRC }, "STARTED · Notes"); });
+  inp.addEventListener("input", function () { clearTimeout(tt); tt = setTimeout(function () { emit("subscribeToTextInputEvent", "textInput", { status: "TEXT_INPUT_UPDATED", text: inp.value, sourceElement: SRC }, "UPDATED · " + inp.value.length + " chars"); }, 450); });
+  inp.addEventListener("blur", function () { if (!typing) return; typing = false; clearTimeout(tt); emit("subscribeToTextInputEvent", "textInput", { status: "TEXT_INPUT_ENDED", text: inp.value, sourceElement: SRC }, "ENDED · " + inp.value.length + " chars"); });
+  inp.addEventListener("keydown", function (e) { if (e.key === "Enter") inp.blur(); });
+
+  var layer = $("#shot-layer"), rect = null, start = null, last = 0;
+  function rel(e) { var r = screen.getBoundingClientRect(); return { x: Math.max(0, Math.min(r.width, e.clientX - r.left)), y: Math.max(0, Math.min(r.height, e.clientY - r.top)), w: r.width, h: r.height }; }
+  function pts(x, y, w, h, R) { var sx = 1512 / R.w, sy = 982 / R.h; return { x: Math.round(x * sx), y: Math.round(y * sy), width: Math.round(w * sx), height: Math.round(h * sy) }; }
+  $("#shot-btn").addEventListener("click", function () { layer.hidden = false; emit("onScreenshotEvent", "screenshot", { status: "SCREENSHOT_STARTED", type: "PARTIAL_SCREEN" }, "STARTED · ⌘⇧4"); });
+  layer.addEventListener("pointerdown", function (e) { e.preventDefault(); layer.setPointerCapture(e.pointerId); clearShots(); start = rel(e); rect = document.createElement("div"); rect.className = "shot-rect"; rect.innerHTML = "<span></span>"; layer.appendChild(rect); });
+  layer.addEventListener("pointermove", function (e) {
+    if (!start) return;
+    var p = rel(e), x = Math.min(p.x, start.x), y = Math.min(p.y, start.y), w = Math.abs(p.x - start.x), h = Math.abs(p.y - start.y);
+    rect.style.cssText = "left:" + x + "px;top:" + y + "px;width:" + w + "px;height:" + h + "px";
+    var b = pts(x, y, w, h, p); rect.firstChild.textContent = b.width + " × " + b.height;
+    if (performance.now() - last > 350 && w > 6 && h > 6) { last = performance.now(); emit("onScreenshotEvent", "screenshot", { status: "SCREENSHOT_UPDATED", type: "PARTIAL_SCREEN", bounds: b }, "UPDATED · " + b.width + "×" + b.height); }
+  });
+  layer.addEventListener("pointerup", function (e) { if (!start) return; var p = rel(e), x = Math.min(p.x, start.x), y = Math.min(p.y, start.y), w = Math.abs(p.x - start.x), h = Math.abs(p.y - start.y); end(w < 6 || h < 6 ? null : pts(x, y, w, h, p)); });
+  function clearShots() { $$(".shot-rect", layer).forEach(function (r) { r.remove(); }); }
+  function end(b) {
+    start = null; rect = null; clearShots(); layer.hidden = true;
+    if (!b) { emit("onScreenshotEvent", "screenshot", { status: "SCREENSHOT_FINISHED", type: "PARTIAL_SCREEN", imageData: null }, "FINISHED · cancelled"); return; }
+    var f = $("#flash"); f.classList.remove("go"); void f.offsetWidth; f.classList.add("go");
+    emit("onScreenshotEvent", "screenshot", { status: "SCREENSHOT_FINISHED", type: "PARTIAL_SCREEN", bounds: b, imageWidth: b.width * 2, imageHeight: b.height * 2 }, "FINISHED · " + b.width * 2 + "×" + b.height * 2 + " px");
+  }
+  document.addEventListener("keydown", function (e) { if (e.key === "Escape" && !layer.hidden) end(null); });
+
+  focus("notes", true);
+  emit("onApplicationSwitchEvent", "windowState", { state: "APPEAR", application: "Safari", bundleId: W.safari.id, windowId: W.safari.win, title: W.safari.title }, "APPEAR · Safari");
+  emit("onApplicationSwitchEvent", "windowState", { state: "FOCUSED", application: "Notes", bundleId: W.notes.id, windowId: W.notes.win, title: "draft.md" }, "FOCUSED · Notes");
+  buildTree();
+  /* auto-play: a cursor runs the story on the mock Mac until someone touches it */
+  (function () {
+    var cap = $("#cap"), cur = $("#cursor"), key = $("#key"), ctl = $("#ctl"), playBtn = $("#ctl-play");
+    var running = false, visible = false, paused = false, lastUser = 0, k = 0, run = 0, speed = 1, pos = null, IDLE = 7000;
+    var CAP_RUN = "Watch it run, or click inside the Mac to try it.";
+    function dead(id) { return id !== run || !running; }
+    // Hover holds: the story freezes in place while you inspect a card or move over the Mac.
+    var holds = {};
+    function held() { for (var k2 in holds) if (holds[k2]) return true; return false; }
+    function hold(why, on) {
+      var was = held(); holds[why] = on; var now = held();
+      if (was === now) return;
+      cur.classList.toggle("held", now);
+      ctl.classList.toggle("paused", now || paused);
+      if (running) cap.textContent = now ? "Paused while you look." : CAP_RUN;
+    }
+    function wait(ms, id) {
+      return new Promise(function (res, rej) {
+        var left = ms / speed, last = performance.now();
+        (function tick() {
+          if (dead(id)) return rej("stop");
+          var t = performance.now(); if (!held()) left -= t - last; last = t;
+          if (left <= 0) res(); else setTimeout(tick, Math.min(50, left));
+        })();
+      });
+    }
+    function at(el, fx, fy) { var r = el.getBoundingClientRect(), S = screen.getBoundingClientRect(); return { x: r.left - S.left + r.width * (fx == null ? .5 : fx), y: r.top - S.top + r.height * (fy == null ? .5 : fy) }; }
+    function put(p) { pos = p; cur.style.transform = "translate(" + p.x + "px," + p.y + "px)"; }
+    function move(p, id, opts) {
+      opts = opts || {};
+      var from = pos, d = Math.hypot(p.x - from.x, p.y - from.y), dur = (opts.ms || 420 + d * 1.1) / speed, arc = opts.straight ? 0 : Math.min(26, d * .07);
+      return new Promise(function (res, rej) {
+        var t0 = performance.now(), lastT = t0;
+        (function f(t) {
+          if (dead(id)) return rej("stop");
+          if (held()) t0 += t - lastT;
+          lastT = t;
+          var q = Math.min(1, Math.max(0, (t - t0) / dur)), e = q < .5 ? 4 * q * q * q : 1 - Math.pow(-2 * q + 2, 3) / 2;
+          var x = from.x + (p.x - from.x) * e, y = from.y + (p.y - from.y) * e - Math.sin(Math.PI * e) * arc;
+          cur.style.transform = "translate(" + x + "px," + y + "px)";
+          if (opts.onMove) opts.onMove(e, x, y);
+          if (q < 1) requestAnimationFrame(f); else { pos = p; res(); }
+        })(t0);
+      });
+    }
+    function press(down) { cur.firstChild.style.transform = down ? "scale(.84)" : ""; }
+    function click(id) {
+      press(true);
+      var r = document.createElement("div"); r.className = "ripple"; r.style.left = pos.x + "px"; r.style.top = pos.y + "px"; screen.appendChild(r);
+      if (r.animate) r.animate([{ transform: "scale(.3)", opacity: .9 }, { transform: "scale(1.5)", opacity: 0 }], { duration: 520, easing: "cubic-bezier(.22,1,.36,1)" }).onfinish = function () { r.remove(); }; else r.remove();
+      return wait(120, id).then(function () { press(false); });
+    }
+    function hint(text, id) { key.textContent = text; key.classList.add("on"); return wait(700, id).then(function () { key.classList.remove("on"); }); }
+    function charRect(node, i) { var r = document.createRange(); r.setStart(node, i); r.setEnd(node, i + 1); return r.getBoundingClientRect(); }
+    async function dragSelect(phrase, id) {
+      var el = $('.sel[data-pane="0"]'), w = document.createTreeWalker(el, NodeFilter.SHOW_TEXT), n, i = -1;
+      while ((n = w.nextNode())) { i = n.data.indexOf(phrase); if (i >= 0) break; }
+      if (i < 0) return;
+      var S = screen.getBoundingClientRect(), a = charRect(n, i), b = charRect(n, i + phrase.length - 1);
+      await move({ x: a.left - S.left + 1, y: a.top - S.top + a.height * .6 }, id);
+      press(true);
+      var sel = getSelection(), range = document.createRange(); range.setStart(n, i); range.setEnd(n, i); sel.removeAllRanges(); sel.addRange(range);
+      var multi = Math.abs(b.top - a.top) > 4;
+      await move({ x: b.right - S.left, y: b.top - S.top + b.height * .6 }, id, { straight: true, ms: 900, onMove: function (e) {
+        var r2 = document.createRange(); r2.setStart(n, i); r2.setEnd(n, i + Math.max(1, Math.round(phrase.length * e))); sel.removeAllRanges(); sel.addRange(r2);
+      } });
+      press(false);
+      reportSel(el, "MOUSE");
+    }
+    function typeLine(text, id) {
+      inp.value = "";
+      emit("subscribeToTextInputEvent", "textInput", { status: "TEXT_INPUT_STARTED", text: "", sourceElement: SRC }, "STARTED · Notes");
+      return new Promise(function (res, rej) {
+        var i = 0;
+        (function next() {
+          if (dead(id)) return rej("stop");
+          if (held()) return setTimeout(next, 80);
+          i++; inp.value = text.slice(0, i);
+          if (i === Math.ceil(text.length / 2)) emit("subscribeToTextInputEvent", "textInput", { status: "TEXT_INPUT_UPDATED", text: inp.value, sourceElement: SRC }, "UPDATED · " + i + " chars");
+          if (i < text.length) setTimeout(next, (40 + Math.random() * 60) / speed);
+          else wait(350, id).then(function () { emit("subscribeToTextInputEvent", "textInput", { status: "TEXT_INPUT_ENDED", text: inp.value, sourceElement: SRC }, "ENDED · " + i + " chars"); res(); }, rej);
+        })();
+      });
+    }
+    async function shoot(id) {
+      await move(at($("#shot-btn")), id); await click(id);
+      layer.hidden = false;
+      emit("onScreenshotEvent", "screenshot", { status: "SCREENSHOT_STARTED", type: "PARTIAL_SCREEN" }, "STARTED · ⌘⇧4");
+      var S = screen.getBoundingClientRect(), x0 = S.width * .48, y0 = S.height * .3, x1 = S.width * .86, y1 = S.height * .72;
+      await move({ x: x0, y: y0 }, id);
+      press(true);
+      var r = document.createElement("div"); r.className = "shot-rect"; r.innerHTML = "<span></span>"; layer.appendChild(r);
+      var mid = false, b = null;
+      await move({ x: x1, y: y1 }, id, { straight: true, ms: 1000, onMove: function (e, x, y) {
+        var w = x - x0, h = y - y0; r.style.cssText = "left:" + x0 + "px;top:" + y0 + "px;width:" + w + "px;height:" + h + "px";
+        b = pts(x0, y0, w, h, { w: S.width, h: S.height }); r.firstChild.textContent = b.width + " × " + b.height;
+        if (!mid && e > .5) { mid = true; emit("onScreenshotEvent", "screenshot", { status: "SCREENSHOT_UPDATED", type: "PARTIAL_SCREEN", bounds: b }, "UPDATED · " + b.width + "×" + b.height); }
+      } });
+      press(false);
+      await wait(200, id);
+      end(b);
+    }
+    var LINES = ["Dey: context is what characterizes the situation.", "Ask: does a copy predict a task switch?"];
+    async function story(id) {
+      var notesBody = $("#w-notes .win-body"), safariBody = $("#w-safari .win-body");
+      while (!dead(id)) {
+        await move(at(safariBody, .7, .85), id); await click(id); focus("safari");
+        if (activeTab !== 0) { await move(at($('.stab[data-tab="0"]')), id); await click(id); switchTab(0); }
+        await wait(300, id);
+        await dragSelect("characterize the situation of an entity", id);
+        await wait(450, id);
+        await hint("⌘C", id); reportCopy();
+        await wait(500, id);
+        await move(at($('.stab[data-tab="1"]')), id); await click(id); getSelection().removeAllRanges(); switchTab(1);
+        await wait(1300, id);
+        await move(at(notesBody, .25, .35), id); await click(id); focus("notes");
+        await wait(350, id);
+        await move(at(inp, .08, .5), id); await click(id);
+        await typeLine(LINES[k++ % LINES.length], id);
+        await wait(700, id);
+        await shoot(id);
+        await wait(2200, id);
+        inp.value = "";
+      }
+    }
+    function begin() {
+      if (running || paused || !visible || document.hidden || Date.now() - lastUser < IDLE) return;
+      running = true; run += 1; cap.textContent = CAP_RUN;
+      if (!pos) { var S = screen.getBoundingClientRect(); put({ x: S.width * .5, y: S.height * .92 }); }
+      cur.classList.add("on");
+      story(run).catch(function () {});
+    }
+    function halt() {
+      if (!running) return;
+      running = false; run += 1; cur.classList.remove("on"); key.classList.remove("on");
+      var sel = getSelection(); if (sel && sel.anchorNode && screen.contains(sel.anchorNode)) sel.removeAllRanges();
+      layer.hidden = true; $$(".shot-rect", layer).forEach(function (r) { r.remove(); });
+    }
+    function user(e) {
+      if (e && e.target && e.target.closest && e.target.closest("#ctl")) return;
+      lastUser = Date.now();
+      if (running) { halt(); cap.textContent = "You're driving. It resumes when you stop."; }
+    }
+    screen.addEventListener("pointerdown", user, true);
+    function hoverable(e) { return e.pointerType === "mouse" || e.pointerType === "pen"; }
+    screen.addEventListener("pointerenter", function (e) { if (hoverable(e)) hold("screen", true); });
+    screen.addEventListener("pointerleave", function (e) { if (hoverable(e)) hold("screen", false); });
+    // The controls live on the screen but shouldn't count as looking at it.
+    ctl.addEventListener("pointerenter", function (e) { if (hoverable(e)) hold("screen", false); });
+    ctl.addEventListener("pointerleave", function (e) { if (hoverable(e) && e.relatedTarget && screen.contains(e.relatedTarget)) hold("screen", true); });
+    var lanesEl = $(".lanes");
+    lanesEl.addEventListener("pointerover", function (e) { if (hoverable(e) && e.target.closest(".card, .mrow")) hold("card", true); });
+    lanesEl.addEventListener("pointerout", function (e) {
+      if (!hoverable(e)) return;
+      var to = e.relatedTarget; if (!(to && to.closest && to.closest(".lanes .card, .lanes .mrow"))) hold("card", false);
+    });
+    screen.addEventListener("keydown", user, true);
+    document.addEventListener("selectionchange", function () { if (!running) return; var s2 = getSelection(); if (s2 && s2.anchorNode && !screen.contains(s2.anchorNode) && String(s2)) user(); });
+    playBtn.addEventListener("click", function () {
+      paused = !paused; ctl.classList.toggle("paused", paused);
+      playBtn.setAttribute("aria-label", paused ? "Play auto-play" : "Pause auto-play");
+      if (paused) { halt(); cap.textContent = "Paused. Click inside the Mac to try it."; } else { lastUser = 0; begin(); }
+    });
+    $$(".ctl-seg button").forEach(function (b) { b.addEventListener("click", function () {
+      speed = +b.dataset.speed; $$(".ctl-seg button").forEach(function (o) { o.setAttribute("aria-pressed", String(o === b)); });
+    }); });
+    setInterval(begin, 1000);
+    if ("IntersectionObserver" in window) new IntersectionObserver(function (en) { visible = en[0].isIntersecting; if (!visible) halt(); else begin(); }, { threshold: .4 }).observe(screen);
+    else visible = true;
+    document.addEventListener("visibilitychange", function () { if (document.hidden) halt(); });
+    if (calm) { paused = true; ctl.classList.add("paused"); cap.textContent = "Press play, or click inside the Mac to try it."; }
+  })();
+})();
+</script>
+</html>

@@ -1,0 +1,3 @@
+numpy>=1.20.0
+# Optional, only for visualization / saving frames:
+# opencv-python>=4.5.0

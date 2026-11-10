@@ -1,0 +1,72 @@
+name: device-macos
+
+on:
+  push:
+    branches: [main]
+    paths: ["device-macos/**", "Package.swift", "packages/core/**", ".github/workflows/device-macos.yml"]
+  pull_request:
+    paths: ["device-macos/**", "Package.swift", "packages/core/**", ".github/workflows/device-macos.yml"]
+
+jobs:
+  swift:
+    name: Swift kits and helpers
+    runs-on: macos-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        package:
+          - .
+          - device-macos/screenshot-detector/swift
+          - device-macos/cursor-plus-plus/swift
+          - device-macos/clipboard-monitor/swift
+          - device-macos/screen-stream/swift
+          - device-macos/camera/swift
+          - device-macos/viewport-manager/swift
+          - device-macos/text-input/swift
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build
+        working-directory: ${{ matrix.package }}
+        run: swift build
+      - name: Test (no TCC permissions needed)
+        working-directory: ${{ matrix.package }}
+        run: swift test
+      - name: Universal release build
+        if: matrix.package != '.'
+        working-directory: ${{ matrix.package }}
+        run: swift build -c release --arch arm64 --arch x86_64
+
+  node:
+    name: TypeScript wrappers
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: npm ci
+      # Workspace packages resolve each other through dist/, so build before typechecking.
+      - run: npm run build:phase1
+      - name: Typecheck
+        run: |
+          for p in screenshot-detector cursor-plus-plus clipboard-monitor screen-stream camera \
+                   viewport-manager text-input material-manager text-selection; do
+            echo "::group::$p"; (cd device-macos/$p && npx tsc --noEmit -p .) || exit 1; echo "::endgroup::"
+          done
+      - name: Unit tests
+        run: |
+          (cd device-macos/material-manager && npm test)
+          (cd device-macos/text-selection && npm test)
+          pip install -r device-macos/material-manager/py/requirements.txt
+          (cd device-macos/material-manager && npm run test:py)
+          (cd device-macos/screen-stream && npm run test:python)
+      - name: Package contents
+        run: |
+          for p in screenshot-detector cursor-plus-plus clipboard-monitor screen-stream camera \
+                   viewport-manager text-input material-manager text-selection; do
+            (cd device-macos/$p && npm pack --dry-run --json > /dev/null) || exit 1
+          done

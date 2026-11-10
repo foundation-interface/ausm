@@ -1,0 +1,68 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+build/
+*.tsbuildinfo
+
+# Rust
+target/
+
+# Swift Package Manager
+.build/
+*.xcodeproj/
+*.xcworkspace/
+DerivedData/
+Package.resolved
+
+# Native addons (node-gyp)
+build/Release/
+build/Debug/
+*.o
+*.obj
+*.node
+prebuilds/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.eggs/
+*.egg
+.venv/
+venv/
+.env/
+.python-version
+
+# Environment files
+.env
+.env.local
+.env.*.local
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+npm-debug.log*
+
+# Coverage
+coverage/
+
+# Cache
+.cache/
+.npm/
+
+# SQLite scratch files from in-memory DB runs
+:memory:
+:memory:-shm
+:memory:-wal

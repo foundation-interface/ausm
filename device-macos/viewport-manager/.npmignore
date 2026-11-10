@@ -1,0 +1,5 @@
+swift/.build
+examples
+test-live.js
+tsconfig.json
+tsup.config.ts

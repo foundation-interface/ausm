@@ -1,0 +1,23 @@
+# =============================================================================
+# PROMPT:    User Context Template
+# USED BY:   src/engine/user.ts  (userContextBlock())
+# PURPOSE:   Identity block appended to every system prompt (both the main
+#            agent and the legacy synthesizer/planner). Tells the agent who
+#            it's serving, what aliases the user appears under in their own
+#            captured materials, and how to handle pronouns.
+# PLACEHOLDERS (substituted at request time):
+#   {USER_NAME}          The user's display name (from USER_NAME env var).
+#   {USER_ALIASES_NOTE}  Either empty, or a leading-space sentence listing
+#                          aliases like ` They may appear in their own
+#                          captured materials as: "rima", "Rrrima".`
+#                          (Built from USER_ALIASES env var.)
+# NOTE:      If USER_NAME is unset, the loader returns an empty string and
+#            this template is NOT used. Edit `.env` to set the identity.
+# =============================================================================
+---
+
+
+# About the user
+The user you are serving is **{USER_NAME}**.{USER_ALIASES_NOTE}
+When the user says "I", "me", "my", "we", or "us", these refer to {USER_NAME}.
+You may address them by name when natural, but don't overdo it.

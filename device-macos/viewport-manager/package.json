@@ -1,0 +1,65 @@
+{
+  "name": "@ausm/device-macos-viewport-manager",
+  "version": "0.1.0",
+  "description": "Window viewport state monitoring for macOS — tracks window lifecycle events via a Swift helper subprocess",
+  "main": "./dist/index.js",
+  "module": "./dist/index.mjs",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    "./package.json": "./package.json",
+    ".": {
+      "import": {
+        "types": "./dist/index.d.mts",
+        "default": "./dist/index.mjs"
+      },
+      "require": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      }
+    }
+  },
+  "files": [
+    "dist",
+    "build/viewport-helper",
+    "swift/Package.swift",
+    "swift/Sources",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build:swift": "cd swift && swift build -c release --arch arm64 --arch x86_64 && mkdir -p ../build && cp \"$(swift build -c release --arch arm64 --arch x86_64 --show-bin-path)/ViewportHelper\" ../build/viewport-helper && codesign --force --sign \"${SIGN_IDENTITY:--}\" --identifier \"com.ausm.viewport-helper\" ../build/viewport-helper",
+    "build:ts": "tsup",
+    "build": "npm run build:swift && npm run build:ts",
+    "dev": "tsup --watch",
+    "clean": "rm -rf dist && cd swift && swift package clean",
+    "rebuild": "npm run clean && npm run build",
+    "prepublishOnly": "npm run build",
+    "typecheck": "tsc --noEmit",
+    "test:swift": "cd swift && swift test"
+  },
+  "devDependencies": {
+    "@types/node": "^20.10.0",
+    "tsup": "^8.0.0",
+    "typescript": "^5.3.0"
+  },
+  "author": "Timeless",
+  "license": "MIT",
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "os": [
+    "darwin"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/timeless/ausm.git",
+    "directory": "device-macos/viewport-manager"
+  },
+  "homepage": "https://github.com/timeless/ausm",
+  "bugs": {
+    "url": "https://github.com/timeless/ausm/issues"
+  }
+}

@@ -1,0 +1,28 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "screen-stream-reader"
+version = "0.1.0"
+description = "Python reader for AUSM screen-stream shared memory frames (macOS)"
+readme = "README.md"
+license = {text = "MIT"}
+requires-python = ">=3.9"
+dependencies = [
+    "numpy>=1.20.0",
+]
+classifiers = [
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: MacOS",
+    "Programming Language :: Python :: 3",
+]
+
+[project.optional-dependencies]
+dev = [
+    "opencv-python>=4.5.0",
+]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["screen_stream_reader*"]
