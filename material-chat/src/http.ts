@@ -12,9 +12,10 @@ import { JinaReaderFetcher } from "./retrieval/web/fetch.js";
 import { getSessionStore } from "./sessions/store.js";
 import type { Session, StoredMessage } from "./sessions/types.js";
 
-const AskBody = z.object({ question: z.string().min(1) });
+// .trim() first so a whitespace-only question is rejected before any model call.
+const AskBody = z.object({ question: z.string().trim().min(1) });
 const ChatBody = z.object({
-  question: z.string().min(1),
+  question: z.string().trim().min(1),
   sessionId: z.string().optional().nullable(),
 });
 const RenameBody = z.object({ title: z.string().min(1) });

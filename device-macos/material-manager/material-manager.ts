@@ -191,6 +191,13 @@ export class MaterialManager extends EventEmitter {
     private inflightCaptures = new Set<number>();
 
     /**
+     * Content-changing events that arrived while a per-window capture was
+     * in flight (windowId → reason).  Re-scheduled once the in-flight capture
+     * finishes so e.g. a tab switch during a capture is not lost.
+     */
+    private recaptureRequests = new Map<number, string>();
+
+    /**
      * Pending bounds-settle timers, keyed by windowId.
      * While a window is being resized/moved, periodic capture is paused
      * because the display-stream crop would include wrong content.
@@ -294,6 +301,7 @@ export class MaterialManager extends EventEmitter {
         }
         this.pendingCaptures.clear();
         this.inflightCaptures.clear();
+        this.recaptureRequests.clear();
         for (const timer of this.retryTimers) clearTimeout(timer);
         this.retryTimers.clear();
 
@@ -345,8 +353,15 @@ export class MaterialManager extends EventEmitter {
         const oldId = this.focusedMaterial?.material.materialId ?? null;
         const newId = material?.materialId ?? null;
 
-        // Same material — nothing to do
-        if (oldId === newId) return;
+        // Same material — nothing to emit.  The same title in two windows of
+        // one app shares a material id; keep tracking which window holds it
+        // so a later UNFOCUSED from the other window does not clear focus.
+        if (oldId === newId) {
+            if (this.focusedMaterial && material && windowId != null) {
+                this.focusedMaterial = { windowId, material };
+            }
+            return;
+        }
 
         // Unfocus the previously focused material
         if (this.focusedMaterial) {
@@ -401,14 +416,42 @@ export class MaterialManager extends EventEmitter {
         // Bounds are required to create a tracker; events for an existing
         // tracker (notably VANISHED / UNFOCUSED) are handled without them.
         if (!event.bounds && !this.trackers.has(event.windowId)) return;
-        if (this.isBlacklisted(event)) return;
-
         try {
+            if (this.isBlacklisted(event)) {
+                this.suppressBlacklistedWindow(event.windowId, event);
+                return;
+            }
             this.dispatchWindowEvent(event.windowId, event);
         } catch (err) {
             // e.g. a SQLite write failure or a throwing custom extractor —
             // never let it propagate into the caller's event loop.
             this.emitError(err);
+        }
+    }
+
+    /**
+     * A blacklisted event for a window we already track (e.g. a tab switched
+     * to a private title): stop attributing anything to the previous
+     * material — drop focus, detach the current material so in-flight and
+     * periodic captures store nothing — and still honour UNFOCUSED/VANISHED
+     * so the tracker is deactivated.
+     */
+    private suppressBlacklistedWindow(windowId: number, event: WindowStateEventLike): void {
+        const tracker = this.trackers.get(windowId);
+        if (!tracker) return;
+        if (this.focusedMaterial?.windowId === windowId) {
+            this.setFocusedMaterial(null, null);
+        }
+        tracker.currentMaterial = null;
+        tracker.title = null;
+        const pending = this.pendingCaptures.get(windowId);
+        if (pending) {
+            clearTimeout(pending);
+            this.pendingCaptures.delete(windowId);
+        }
+        this.recaptureRequests.delete(windowId);
+        if (event.state === 'UNFOCUSED' || event.state === 'VANISHED') {
+            this.dispatchWindowEvent(windowId, event);
         }
     }
 
@@ -449,14 +492,16 @@ export class MaterialManager extends EventEmitter {
         if (event.bounds) tracker.updateBounds(event.bounds);
 
         // Ensure the initial material is set up (title may have arrived
-        // with the APPEAR event itself)
-        if (event.title && !tracker.currentMaterial) {
+        // with the APPEAR event itself, or differ from the one we last saw
+        // if the window re-appears after VANISHED).
+        if (event.title && tracker.currentMaterial?.title !== event.title) {
             const appMetadata = this.extractAppMetadata(event, tracker.documentPath);
             const { material, isNew } = tracker.switchMaterial(event.title, event.documentPath, appMetadata);
             if (isNew) {
                 this.persistMaterial(material);
                 this.emit('material-created', material);
             }
+            if (tracker.active) this.setFocusedMaterial(windowId, material);
         }
 
         // Capture the window once (per-window CGWindowListCreateImage is
@@ -556,7 +601,9 @@ export class MaterialManager extends EventEmitter {
             // happened recently — that frame is still fresh and a periodic
             // capture would just duplicate it.
             const sinceLast = Date.now() - tracker.lastExplicitCaptureAt;
-            if (sinceLast < intervalMs) {
+            // (A negative value means the wall clock moved backwards; don't
+            // let that suppress periodic capture until it catches up.)
+            if (sinceLast >= 0 && sinceLast < intervalMs) {
                 this.logDebug(
                     `[${tracker.windowId}] Skipping periodic capture — explicit capture ${sinceLast}ms ago`,
                 );
@@ -730,6 +777,7 @@ export class MaterialManager extends EventEmitter {
             clearTimeout(settleTimer);
             this.boundsSettleTimers.delete(windowId);
         }
+        this.recaptureRequests.delete(windowId);
 
         // Keep the tracker for now so its materials stay queryable, but
         // bound the number of retained vanished trackers.
@@ -795,8 +843,9 @@ export class MaterialManager extends EventEmitter {
         // skip scheduling another — the in-flight one will produce the frame.
         if (this.inflightCaptures.has(windowId)) {
             this.logDebug(
-                `[${windowId}] Skipping window capture — already in-flight (${reason})`,
+                `[${windowId}] Window capture in-flight — re-capturing after it finishes (${reason})`,
             );
+            this.recaptureRequests.set(windowId, reason);
             return;
         }
 
@@ -810,11 +859,12 @@ export class MaterialManager extends EventEmitter {
             if (!this.running || !this.screenStreamHelper) return;
 
             this.inflightCaptures.add(windowId);
+            const material = tracker.currentMaterial;
             const displayStr = toDisplayString(tracker.displayId);
             this.screenStreamHelper
                 .captureWindow(windowId, this.config.jpegQuality / 100, displayStr)
                 .then((capture) => {
-                    if (!this.running) return;
+                    if (!this.running || tracker.currentMaterial !== material) return;
 
                     const jpegData = capture.data;
 
@@ -822,6 +872,10 @@ export class MaterialManager extends EventEmitter {
                     return this.frameReader
                         .processImage(jpegData, tracker.lastFrameHash)
                         .then((analysis) => {
+                            // Superseded (stopped, or the title changed while
+                            // the capture was in flight — the pixels belong to
+                            // the previous material).
+                            if (!this.running || tracker.currentMaterial !== material) return;
                             this.processWindowCapture(
                                 tracker, jpegData,
                                 capture.width, capture.height,
@@ -831,6 +885,7 @@ export class MaterialManager extends EventEmitter {
                         });
                 })
                 .catch((err) => {
+                    if (!this.running) return; // e.g. "Frame reader stopped"
                     this.logDebug(
                         `[${windowId}] Window capture failed: ${(err as Error).message}`,
                     );
@@ -838,6 +893,13 @@ export class MaterialManager extends EventEmitter {
                 })
                 .finally(() => {
                     this.inflightCaptures.delete(windowId);
+                    const again = this.recaptureRequests.get(windowId);
+                    if (again !== undefined) {
+                        this.recaptureRequests.delete(windowId);
+                        if (this.running && this.trackers.get(windowId) === tracker) {
+                            this.captureWindowFrame(tracker, again);
+                        }
+                    }
                 });
         }, delay);
 
@@ -866,16 +928,18 @@ export class MaterialManager extends EventEmitter {
         this.logDebug(`[${windowId}] Immediate window capture (${reason})`);
 
         this.inflightCaptures.add(windowId);
+        const material = tracker.currentMaterial;
         this.screenStreamHelper
             .captureWindow(windowId, this.config.jpegQuality / 100, displayStr)
             .then((capture) => {
-                if (!this.running) return;
+                if (!this.running || tracker.currentMaterial !== material) return;
 
                 const jpegData = capture.data;
 
                 return this.frameReader
                     .processImage(jpegData, tracker.lastFrameHash)
                     .then((analysis) => {
+                        if (!this.running || tracker.currentMaterial !== material) return;
                         this.processWindowCapture(
                             tracker, jpegData,
                             capture.width, capture.height,
@@ -891,6 +955,13 @@ export class MaterialManager extends EventEmitter {
             })
             .finally(() => {
                 this.inflightCaptures.delete(windowId);
+                const again = this.recaptureRequests.get(windowId);
+                if (again !== undefined) {
+                    this.recaptureRequests.delete(windowId);
+                    if (this.running && this.trackers.get(windowId) === tracker) {
+                        this.captureWindowFrame(tracker, again);
+                    }
+                }
             });
     }
 
@@ -1004,6 +1075,7 @@ export class MaterialManager extends EventEmitter {
         }
 
         const displayStr = toDisplayString(displayId);
+        const material = tracker.currentMaterial;
 
         this.frameReader
             .requestFrame(
@@ -1014,9 +1086,10 @@ export class MaterialManager extends EventEmitter {
                 this.config.jpegQuality,
             )
             .then((result) => {
-                // Discard if the window became inactive while the async
-                // crop was in flight — the frame now shows wrong content.
-                if (!tracker.active) {
+                // Discard if the window became inactive (or switched
+                // material) while the async crop was in flight — the frame
+                // now shows wrong content.
+                if (!tracker.active || tracker.currentMaterial !== material) {
                     this.logDebug(
                         `[${tracker.windowId}] Discarding crop — window no longer active`,
                     );
@@ -1100,6 +1173,7 @@ export class MaterialManager extends EventEmitter {
         }
 
         const displayStr = toDisplayString(displayId);
+        const material = tracker.currentMaterial;
 
         this.frameReader
             .requestFrame(
@@ -1111,9 +1185,9 @@ export class MaterialManager extends EventEmitter {
             )
             .then((result) => {
                 // Discard if the window became inactive (unfocused / vanished)
-                // while the async crop was in flight — the display-stream
-                // frame now shows a different window's content.
-                if (!this.running || !tracker.active) {
+                // or switched material while the async crop was in flight —
+                // the frame now shows different content.
+                if (!this.running || !tracker.active || tracker.currentMaterial !== material) {
                     this.logDebug(
                         `[${tracker.windowId}] Discarding crop — window no longer active`,
                     );

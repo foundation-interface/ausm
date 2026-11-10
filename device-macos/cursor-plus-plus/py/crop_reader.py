@@ -164,7 +164,8 @@ class CropReader:
             crop_height = max(1.0, float(request.get("cropHeight", 40)))
             scale_factor_hint = float(request.get("scaleFactor", 2.0)) or 2.0
             jpeg_quality = min(100, max(1, int(request.get("jpegQuality", 75))))
-        except (TypeError, ValueError):
+        except (TypeError, ValueError, OverflowError):
+            # OverflowError: int(float('inf')), e.g. "jpegQuality": Infinity or 1e999.
             return {"requestId": request_id, "ok": False, "error": "Invalid crop request parameters"}
 
         if not self.ensure_connected():

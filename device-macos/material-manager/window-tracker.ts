@@ -150,7 +150,7 @@ export class WindowTracker {
                 appMetadata: appMetadata ?? null,
             };
             this.materials.set(title, mat);
-            this.evictExcessMaterials();
+            this.evictExcessMaterials(mat);
         } else {
             if (documentPath && mat.documentPath !== documentPath) {
                 mat.documentPath = documentPath;
@@ -230,13 +230,17 @@ export class WindowTracker {
         }
     }
 
-    /** Drop least-recently-seen materials beyond MAX_MATERIALS_PER_WINDOW. */
-    private evictExcessMaterials(): void {
+    /**
+     * Drop least-recently-seen materials beyond MAX_MATERIALS_PER_WINDOW.
+     * Never drops the current material or `keep` (the one just created —
+     * with a wall clock that went backwards it can look like the oldest).
+     */
+    private evictExcessMaterials(keep?: Material): void {
         while (this.materials.size > MAX_MATERIALS_PER_WINDOW) {
             let oldestKey: string | null = null;
             let oldestSeen = Infinity;
             for (const [key, m] of this.materials) {
-                if (m === this.currentMaterial) continue;
+                if (m === this.currentMaterial || m === keep) continue;
                 if (m.lastSeen < oldestSeen) {
                     oldestSeen = m.lastSeen;
                     oldestKey = key;

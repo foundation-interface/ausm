@@ -23,6 +23,9 @@ final class MultiDisplayShmManager {
 
     // Per-display shared memory managers
     private var displayShms: [String: SharedMemoryManager] = [:]
+    /// Segments closed by `removeDisplay(_:destroyShm: false)` (e.g. during a display restart)
+    /// and not re-created since. They still hold the last frame, so `shutdown()` unlinks them.
+    private var retainedShmNames: Set<String> = []
     private let lock = NSLock()
 
     deinit { shutdown() }
@@ -39,6 +42,9 @@ final class MultiDisplayShmManager {
             self.framesPerDisplay = framesPerDisplay
             return true
         }
+        // Switching to another base name: release the previous registry and its segments
+        // first, otherwise they stay mapped and linked (with screen contents) forever.
+        if registry != nil { shutdownLocked() }
 
         let registryName = baseName + "-registry"
         guard ShmMath.isValidShmName(registryName) else {
@@ -77,11 +83,18 @@ final class MultiDisplayShmManager {
     func shutdown() {
         lock.lock()
         defer { lock.unlock() }
+        shutdownLocked()
+    }
 
+    private func shutdownLocked() {
         for (_, shm) in displayShms {
             shm.close(unlink: isOwner)
         }
         displayShms.removeAll()
+        if isOwner {
+            for name in retainedShmNames { shm_unlink(name) }
+        }
+        retainedShmNames.removeAll()
 
         if let registry {
             munmap(registry.memory, registry.size)
@@ -162,6 +175,7 @@ final class MultiDisplayShmManager {
 
         updateActiveCount(registry.memory)
         displayShms[displayId] = shm
+        retainedShmNames.remove(shmName)
 
         NSLog("[MultiDisplayShm] Added display '%@' (%ux%u, logical=%ux%u) at slot %d",
               displayId, width, height, logicalWidth, logicalHeight, slot)
@@ -169,7 +183,8 @@ final class MultiDisplayShmManager {
     }
 
     /// Mark a display inactive in the registry and close its segment.
-    /// The segment is unlinked when `destroyShm` is true.
+    /// The segment is unlinked when `destroyShm` is true; otherwise it stays linked until the
+    /// display is added again (which re-creates it) or `shutdown()`.
     func removeDisplay(_ displayId: String, destroyShm: Bool = false) {
         lock.lock()
         defer { lock.unlock() }
@@ -190,6 +205,7 @@ final class MultiDisplayShmManager {
         updateActiveCount(registry.memory)
 
         if let shm = displayShms.removeValue(forKey: displayId) {
+            if !destroyShm { retainedShmNames.insert(shm.shmName) }
             shm.close(unlink: destroyShm)
         }
 

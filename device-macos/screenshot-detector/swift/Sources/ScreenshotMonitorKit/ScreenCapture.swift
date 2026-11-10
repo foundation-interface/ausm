@@ -61,12 +61,7 @@ public enum ScreenCapture {
         completion: @escaping (CGImage?, String?) -> Void
     ) {
         let bounds = CGDisplayBounds(displayID)
-        // Clip to the display; a rect that misses it entirely captures the whole display.
-        let crop: CGRect? = rect.flatMap { r -> CGRect? in
-            guard r.width >= 1, r.height >= 1 else { return nil }
-            let clipped = r.intersection(bounds)
-            return clipped.width >= 1 && clipped.height >= 1 ? clipped : nil
-        }
+        let crop = Geometry.clippedCrop(rect, to: bounds)
 
         if #available(macOS 14.0, *) {
             SCShareableContent.getExcludingDesktopWindows(false, onScreenWindowsOnly: true) { content, error in
@@ -82,15 +77,10 @@ public enum ScreenCapture {
                 let config = SCStreamConfiguration()
                 let scale = backingScale(of: displayID)
                 let target = crop ?? bounds
-                // sourceRect is in display-local points.
-                config.sourceRect = CGRect(
-                    x: target.origin.x - bounds.origin.x,
-                    y: target.origin.y - bounds.origin.y,
-                    width: target.width,
-                    height: target.height
-                )
-                config.width = max(Int((target.width * scale).rounded()), 1)
-                config.height = max(Int((target.height * scale).rounded()), 1)
+                config.sourceRect = Geometry.displayLocal(target, in: bounds)
+                let size = Geometry.pixelSize(of: target.size, scale: scale)
+                config.width = size.width
+                config.height = size.height
                 config.scalesToFit = false
                 config.showsCursor = false
                 config.captureResolution = .best
@@ -144,8 +134,9 @@ public enum ScreenCapture {
                 let config = SCStreamConfiguration()
                 let frame = window.frame
                 let scale = backingScale(of: display(containing: CGPoint(x: frame.midX, y: frame.midY)))
-                config.width = max(Int((frame.width * scale).rounded()), 1)
-                config.height = max(Int((frame.height * scale).rounded()), 1)
+                let size = Geometry.pixelSize(of: frame.size, scale: scale)
+                config.width = size.width
+                config.height = size.height
                 config.showsCursor = false
                 config.captureResolution = .best
                 config.ignoreShadowsSingleWindow = false
@@ -211,19 +202,55 @@ public enum ScreenCapture {
     private static func legacyCaptureDisplay(_ displayID: CGDirectDisplayID, cropTo rect: CGRect?) -> CGImage? {
         guard let full = CGDisplayCreateImage(displayID) else { return nil }
         guard let rect = rect else { return full }
-        let bounds = CGDisplayBounds(displayID)
-        let scaleX = CGFloat(full.width) / bounds.width
-        let scaleY = CGFloat(full.height) / bounds.height
-        var pixelRect = CGRect(
-            x: max(0, floor((rect.origin.x - bounds.origin.x) * scaleX)),
-            y: max(0, floor((rect.origin.y - bounds.origin.y) * scaleY)),
-            width: ceil(rect.width * scaleX),
-            height: ceil(rect.height * scaleY)
-        )
-        pixelRect.size.width = min(pixelRect.width, CGFloat(full.width) - pixelRect.origin.x)
-        pixelRect.size.height = min(pixelRect.height, CGFloat(full.height) - pixelRect.origin.y)
-        guard pixelRect.width > 0, pixelRect.height > 0 else { return full }
+        guard let pixelRect = Geometry.pixelCrop(rect, displayBounds: CGDisplayBounds(displayID),
+                                                 imageWidth: full.width, imageHeight: full.height) else { return full }
         return full.cropping(to: pixelRect) ?? full
+    }
+
+    // MARK: - Geometry (pure)
+
+    /// Coordinate math shared by the capture paths. Inputs are global CG points (origin at the
+    /// top-left of the main display; displays left of / above it have negative origins).
+    enum Geometry {
+        /// `rect` clipped to the display; nil (= whole display) when there is no rect, it is
+        /// smaller than a point, or it misses the display entirely.
+        static func clippedCrop(_ rect: CGRect?, to bounds: CGRect) -> CGRect? {
+            guard let r = rect, r.width >= 1, r.height >= 1 else { return nil }
+            let clipped = r.intersection(bounds)
+            return clipped.width >= 1 && clipped.height >= 1 ? clipped : nil
+        }
+
+        /// `rect` translated into display-local points (ScreenCaptureKit's `sourceRect`).
+        static func displayLocal(_ rect: CGRect, in bounds: CGRect) -> CGRect {
+            CGRect(x: rect.origin.x - bounds.origin.x, y: rect.origin.y - bounds.origin.y,
+                   width: rect.width, height: rect.height)
+        }
+
+        /// Pixel dimensions of a size in points at `scale`, rounded, never below 1.
+        static func pixelSize(of size: CGSize, scale: CGFloat) -> (width: Int, height: Int) {
+            func px(_ v: CGFloat) -> Int {
+                let p = (v * scale).rounded()
+                guard p.isFinite, p >= 1 else { return 1 }
+                return p >= CGFloat(Int32.max) ? Int(Int32.max) : Int(p)
+            }
+            return (px(size.width), px(size.height))
+        }
+
+        /// Pixel rect inside a full-display image of `imageWidth`x`imageHeight` covering `rect`
+        /// (global points), clamped to the image; nil when nothing of the image would remain.
+        static func pixelCrop(_ rect: CGRect, displayBounds bounds: CGRect,
+                              imageWidth: Int, imageHeight: Int) -> CGRect? {
+            guard bounds.width > 0, bounds.height > 0, imageWidth > 0, imageHeight > 0 else { return nil }
+            let scaleX = CGFloat(imageWidth) / bounds.width
+            let scaleY = CGFloat(imageHeight) / bounds.height
+            let w = CGFloat(imageWidth), h = CGFloat(imageHeight)
+            let x0 = min(max(0, floor((rect.minX - bounds.minX) * scaleX)), w)
+            let y0 = min(max(0, floor((rect.minY - bounds.minY) * scaleY)), h)
+            let x1 = min(max(0, ceil((rect.maxX - bounds.minX) * scaleX)), w)
+            let y1 = min(max(0, ceil((rect.maxY - bounds.minY) * scaleY)), h)
+            guard x1 > x0, y1 > y0 else { return nil }
+            return CGRect(x: x0, y: y0, width: x1 - x0, height: y1 - y0)
+        }
     }
 
     private static func legacyCaptureWindow(_ windowID: CGWindowID) -> CGImage? {

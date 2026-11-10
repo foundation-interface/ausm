@@ -77,6 +77,8 @@ export interface ViewportMonitorConfig {
     debug?: boolean;
     /** Restart the helper with exponential backoff if it crashes (default: true) */
     autoRestart?: boolean;
+    /** Override the helper executable path (default: the bundled helper). */
+    helperPath?: string;
 }
 
 // ─── Typed event map ────────────────────────────────────────────────────

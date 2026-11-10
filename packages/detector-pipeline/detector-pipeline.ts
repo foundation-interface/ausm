@@ -141,8 +141,14 @@ export class DetectorPipelineService extends EventEmitter {
     private groupLastScheduledAt: Map<string, number> = new Map();
     private groupBackoff: Map<string, number> = new Map();
 
-    private eventBuffer: Array<{ type: string; summary: Record<string, unknown>; timestamp: number }> = [];
-    private lastEvaluationEventTimestamp = 0;
+    private eventBuffer: Array<{ seq: number; type: string; summary: Record<string, unknown>; timestamp: number }> = [];
+    /** Monotonic id per buffered event; cursors use it so same-millisecond events are never skipped. */
+    private eventSeq = 0;
+    /** Per-group cursor: highest event seq already shown to that group. */
+    private groupEventCursor: Map<string, number> = new Map();
+    /** Monotonic id per evaluation, and the newest one whose results were applied per group. */
+    private evalSeq = 0;
+    private groupLatestAppliedEval: Map<string, number> = new Map();
 
     private latestScreenFrame: string | null = null;
     private latestScreenFrameTimestamp = 0;
@@ -167,7 +173,9 @@ export class DetectorPipelineService extends EventEmitter {
     private duplicateFrameCount = 0;
 
     private evalInFlight = 0;
-    private evalQueue: Array<() => void> = [];
+    private evalQueue: Array<(granted: boolean) => void> = [];
+    /** Bumped by cleanup() so slots released by stale evaluations are ignored. */
+    private evalGeneration = 0;
 
     constructor(config: DetectorPipelineConfig) {
         super();
@@ -175,8 +183,8 @@ export class DetectorPipelineService extends EventEmitter {
         this.config = {
             ...config,
             provider,
-            location: config.location ?? 'global',
-            model: config.model ?? (provider === 'cerebras' ? CEREBRAS_DEFAULT_MODEL : 'gemini-2.0-flash'),
+            location: config.location || 'global',
+            model: config.model || (provider === 'cerebras' ? CEREBRAS_DEFAULT_MODEL : 'gemini-2.0-flash'),
             maxEventBufferSize: config.maxEventBufferSize ?? 60,
             maxEventAgeMs: config.maxEventAgeMs ?? 5_000,
             maxScreenshotDimension: config.maxScreenshotDimension ?? 768,
@@ -211,13 +219,13 @@ export class DetectorPipelineService extends EventEmitter {
             if (d.dispatchOnly) return false;
 
             const lastTriggered = this.detectorLastTriggeredAt.get(d.name);
-            if (lastTriggered && now - lastTriggered < d.cooldownMs) return false;
+            if (lastTriggered !== undefined && now - lastTriggered < d.cooldownMs) return false;
 
             const lastEvaluated = this.detectorLastEvaluatedAt.get(d.name);
             if (d.trigger === 'screen') {
-                if (lastEvaluated && this.latestScreenFrameTimestamp <= lastEvaluated) return false;
+                if (lastEvaluated !== undefined && this.latestScreenFrameTimestamp <= lastEvaluated) return false;
             } else {
-                if (lastEvaluated && now - lastEvaluated < d.intervalMs) return false;
+                if (lastEvaluated !== undefined && now - lastEvaluated < d.intervalMs) return false;
             }
             return true;
         });
@@ -309,7 +317,7 @@ export class DetectorPipelineService extends EventEmitter {
     }
 
     pushEvent(type: string, summary: Record<string, unknown>, schedule = true): void {
-        this.eventBuffer.push({ type, summary, timestamp: Date.now() });
+        this.eventBuffer.push({ seq: ++this.eventSeq, type, summary, timestamp: Date.now() });
         this.pruneEventBuffer();
 
         if (type === 'window-state' && summary.state === 'FOCUSED') {
@@ -368,10 +376,14 @@ export class DetectorPipelineService extends EventEmitter {
         this.detectorLastEvaluatedAt.clear();
         this.groupBackoff.clear();
         this.groupLastScheduledAt.clear();
+        this.groupEventCursor.clear();
+        this.groupLatestAppliedEval.clear();
+        this.evalGeneration++;
         this.evalInFlight = 0;
+        const waiting = this.evalQueue;
         this.evalQueue = [];
+        for (const wake of waiting) wake(false);
         this.eventBuffer = [];
-        this.lastEvaluationEventTimestamp = 0;
         this.latestScreenFrame = null;
         this.latestRawFrame = null;
         this.latestRawFingerprint = '';
@@ -453,7 +465,7 @@ export class DetectorPipelineService extends EventEmitter {
             if (existing) clearTimeout(existing);
             this.groupTimers.set(group.key, setTimeout(() => {
                 this.groupTimers.delete(group.key);
-                this.tryEvaluateGroup(group);
+                this.runScheduledGroup(group);
             }, effectiveMs));
             return;
         }
@@ -464,8 +476,21 @@ export class DetectorPipelineService extends EventEmitter {
         this.groupTimers.set(group.key, setTimeout(() => {
             this.groupTimers.delete(group.key);
             this.groupLastScheduledAt.set(group.key, Date.now());
-            this.tryEvaluateGroup(group);
+            this.runScheduledGroup(group);
         }, remaining));
+    }
+
+    /**
+     * A timer captured its group when it was scheduled. By the time it fires a
+     * detector may have been removed, replaced, or put in cooldown, so evaluate
+     * only the members that are still evaluable now.
+     */
+    private runScheduledGroup(group: DetectorGroup): void {
+        if (!this.running) return;
+        const names = new Set(group.specs.map((s) => s.name));
+        const specs = this.getEvaluableSpecs().filter((s) => names.has(s.name));
+        if (specs.length === 0) return;
+        this.tryEvaluateGroup({ key: group.key, specs });
     }
 
     private tryEvaluateGroup(group: DetectorGroup): void {
@@ -475,8 +500,10 @@ export class DetectorPipelineService extends EventEmitter {
     }
 
     private async doEvaluateGroup(group: DetectorGroup): Promise<DetectorTriggerResult[]> {
-        if (!this.client) return [];
+        const client = this.client;
+        if (!client) return [];
 
+        const evalId = ++this.evalSeq;
         const evalStartMs = Date.now();
         const frameReceivedAtSnapshot = this.frameReceivedAt;
         const detectorNames = group.specs.map(d => d.name).join(', ');
@@ -488,7 +515,7 @@ export class DetectorPipelineService extends EventEmitter {
         }
 
         try {
-            const newEvents = this.collectNewEvents();
+            const newEvents = this.collectNewEvents(group.key);
 
             const hasScreen = group.specs.some(d => d.sources.includes('screen'));
             const hasEvents = group.specs.some(d => d.sources.includes('events'));
@@ -510,10 +537,11 @@ export class DetectorPipelineService extends EventEmitter {
             const isScreenGroup = group.specs.every(d => d.trigger === 'screen');
             const maxEvents = isScreenGroup ? 20 : undefined;
 
-            await this.acquireEvalSlot();
+            const slot = await this.acquireEvalSlot();
+            if (slot === null) return []; // cancelled by cleanup() while queued
             let evalResult: DetectorEvaluateResult;
             try {
-                evalResult = await this.client.evaluate(
+                evalResult = await client.evaluate(
                     group.specs,
                     events,
                     imageBase64,
@@ -521,8 +549,16 @@ export class DetectorPipelineService extends EventEmitter {
                     this.evaluationContext,
                 );
             } finally {
-                this.releaseEvalSlot();
+                this.releaseEvalSlot(slot);
             }
+
+            // Overlapping evaluations of one group can finish out of order.
+            // Never let an older answer overwrite a newer one.
+            if (evalId < (this.groupLatestAppliedEval.get(group.key) ?? 0)) {
+                this.logDebug(`Discarding stale result for [${detectorNames}] (eval #${evalId})`);
+                return [];
+            }
+            this.groupLatestAppliedEval.set(group.key, evalId);
             const { triggered, rawPrompt, rawResponse, modelLatencyMs, parseMs, promptBuildMs, attempt } = evalResult;
             const e2eMs = frameReceivedAtSnapshot > 0 ? Date.now() - frameReceivedAtSnapshot : Date.now() - evalStartMs;
             this.recordModelLatency(modelLatencyMs);
@@ -690,7 +726,9 @@ export class DetectorPipelineService extends EventEmitter {
             const eventsKey = spec.events && spec.events.length > 0
                 ? [...spec.events].sort().join(',')
                 : '*';
-            const key = `${sourcesKey}|${eventsKey}`;
+            // trigger is part of the key: a screen-triggered member would otherwise
+            // stop an interval detector in the same group from ever being scheduled.
+            const key = `${sourcesKey}|${eventsKey}|${spec.trigger}`;
 
             if (spec.isolated) {
                 isolated.push({ key: `isolated:${spec.name}|${key}`, specs: [spec] });
@@ -725,16 +763,17 @@ export class DetectorPipelineService extends EventEmitter {
 
     // ── Event Collection ─────────────────────────────────────────────────────
 
-    private collectNewEvents(): ActivityEvent[] {
+    private collectNewEvents(groupKey: string): ActivityEvent[] {
         this.pruneEventBuffer();
 
         const newEvents: ActivityEvent[] = [];
-        let latestTimestamp = this.lastEvaluationEventTimestamp;
+        const cursor = this.groupEventCursor.get(groupKey) ?? 0;
+        let latestSeq = cursor;
         const focusApp = this.focusedApplication;
 
         for (const entry of this.eventBuffer) {
-            if (entry.timestamp > this.lastEvaluationEventTimestamp) {
-                latestTimestamp = Math.max(latestTimestamp, entry.timestamp);
+            if (entry.seq > cursor) {
+                latestSeq = Math.max(latestSeq, entry.seq);
 
                 if (focusApp && APP_SCOPED_EVENT_TYPES.has(entry.type) && entry.summary.application) {
                     const eventApp = entry.summary.application as string;
@@ -744,14 +783,14 @@ export class DetectorPipelineService extends EventEmitter {
                 }
 
                 newEvents.push({
+                    ...entry.summary,
                     eventType: entry.type,
                     timestamp: entry.timestamp,
-                    ...entry.summary,
                 });
             }
         }
 
-        this.lastEvaluationEventTimestamp = latestTimestamp;
+        this.groupEventCursor.set(groupKey, latestSeq);
         return newEvents;
     }
 
@@ -773,6 +812,8 @@ export class DetectorPipelineService extends EventEmitter {
                     clearTimeout(timer);
                     this.groupTimers.delete(key);
                     this.groupBackoff.delete(key);
+                    this.groupEventCursor.delete(key);
+                    this.groupLatestAppliedEval.delete(key);
                 }
             }
         }
@@ -780,25 +821,26 @@ export class DetectorPipelineService extends EventEmitter {
 
     // ── Concurrency Control ─────────────────────────────────────────────────
 
-    private acquireEvalSlot(): Promise<void> {
+    /** Resolves with the slot's generation, or null if cleanup() cancelled the wait. */
+    private acquireEvalSlot(): Promise<number | null> {
+        const generation = this.evalGeneration;
         if (this.evalInFlight < this.config.maxConcurrentEvals) {
             this.evalInFlight++;
-            return Promise.resolve();
+            return Promise.resolve(generation);
         }
-        return new Promise<void>((resolve) => {
-            this.evalQueue.push(() => {
-                this.evalInFlight++;
-                resolve();
-            });
+        return new Promise<number | null>((resolve) => {
+            this.evalQueue.push((granted) => resolve(granted ? generation : null));
         });
     }
 
-    private releaseEvalSlot(): void {
+    private releaseEvalSlot(generation: number): void {
+        if (generation !== this.evalGeneration) return; // slot belonged to a pre-cleanup run
         const next = this.evalQueue.shift();
         if (next) {
-            next();
+            // Hand the slot straight to the next waiter: the in-flight count is unchanged.
+            next(true);
         } else {
-            this.evalInFlight--;
+            this.evalInFlight = Math.max(0, this.evalInFlight - 1);
         }
     }
 

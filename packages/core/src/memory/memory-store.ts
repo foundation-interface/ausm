@@ -13,6 +13,8 @@
  *   frames    — one row per curated frame, with JPEG blob
  */
 
+import fs from 'fs';
+import path from 'path';
 import Database from 'better-sqlite3';
 import * as sqliteVec from 'sqlite-vec';
 import type { Material, MaterialFrame, Screenshot, Task, TaskEvent, Person, PersonEncounter, PersonProfile } from './types';
@@ -46,6 +48,29 @@ const DEFAULTS: Required<MemoryStoreConfig> = {
     maxFramesPerMaterial: 200,
     walMode: true,
 };
+
+/** True if `dbPath` names an on-disk file (not ':memory:' / '' / a URI). */
+function isFileDbPath(dbPath: string): boolean {
+    return dbPath !== '' && dbPath !== ':memory:' && !dbPath.startsWith('file:');
+}
+
+/**
+ * Create the database file (and its parent directory) with owner-only
+ * permissions before SQLite opens it — the store holds screenshots of the
+ * user's windows.  Mirrors material-manager's FrameStore.  Best-effort.
+ */
+function prepareDbFile(dbPath: string): void {
+    const dir = path.dirname(path.resolve(dbPath));
+    if (!fs.existsSync(dir)) {
+        fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
+    }
+    try {
+        fs.closeSync(fs.openSync(dbPath, 'a', 0o600));
+        fs.chmodSync(dbPath, 0o600);
+    } catch {
+        // e.g. not the owner — leave existing permissions alone
+    }
+}
 
 // ── Memory Store ───────────────────────────────────────────────────────────
 
@@ -110,6 +135,9 @@ export class MemoryStore {
 
     constructor(config: MemoryStoreConfig = {}) {
         this.config = { ...DEFAULTS, ...config };
+        if (isFileDbPath(this.config.dbPath)) {
+            prepareDbFile(this.config.dbPath);
+        }
         this.db = new Database(this.config.dbPath);
 
         sqliteVec.load(this.db);
@@ -273,6 +301,11 @@ export class MemoryStore {
             this.db.exec(`ALTER TABLE person_encounters ADD COLUMN weight REAL`);
         } catch { /* column already exists */ }
 
+        // Migration: frames tables created before capture_reason existed.
+        try {
+            this.db.exec(`ALTER TABLE frames ADD COLUMN capture_reason TEXT`);
+        } catch { /* column already exists */ }
+
         // Migration: add app_metadata_json for application-specific structured metadata.
         try {
             this.db.exec(`ALTER TABLE materials ADD COLUMN app_metadata_json TEXT`);
@@ -359,7 +392,7 @@ export class MemoryStore {
         this.stmtUpdateMaterial = this.db.prepare(`
             UPDATE materials SET
                 last_frame_hash = ?,
-                last_seen = ?,
+                last_seen = MAX(?, last_seen),
                 document_path = COALESCE(?, document_path)
             WHERE material_id = ?
         `);
@@ -492,7 +525,8 @@ export class MemoryStore {
 
         this.stmtUpsertTask = this.db.prepare(`
             INSERT INTO tasks (task_id, label, description, application, confidence, status, approach, parent_task_id, level, first_seen, last_seen, created_at, updated_at)
-            VALUES (@task_id, @label, @description, @application, @confidence, @status, @approach, @parent_task_id, @level, @ts, @ts, @now, @now)
+            VALUES (@task_id, COALESCE(@label, 'Unknown task'), @description, @application, @confidence,
+                    COALESCE(@status, 'TASK_DETECTED'), @approach, @parent_task_id, COALESCE(@level, 'action'), @ts, @ts, @now, @now)
             ON CONFLICT(task_id) DO UPDATE SET
                 label          = COALESCE(@label, tasks.label),
                 description    = COALESCE(@description, tasks.description),
@@ -754,17 +788,18 @@ export class MemoryStore {
         const keywords = query.toLowerCase().split(/\s+/).filter(Boolean);
         if (keywords.length === 0) return [];
 
+        // Keywords are matched literally: escape LIKE metacharacters.
         const conditions = keywords.map((_, i) => `(
-            LOWER(title) LIKE @kw${i}
-            OR LOWER(COALESCE(application, '')) LIKE @kw${i}
-            OR LOWER(COALESCE(document_path, '')) LIKE @kw${i}
-            OR LOWER(COALESCE(app_metadata_json, '')) LIKE @kw${i}
+            LOWER(title) LIKE @kw${i} ESCAPE '\\'
+            OR LOWER(COALESCE(application, '')) LIKE @kw${i} ESCAPE '\\'
+            OR LOWER(COALESCE(document_path, '')) LIKE @kw${i} ESCAPE '\\'
+            OR LOWER(COALESCE(app_metadata_json, '')) LIKE @kw${i} ESCAPE '\\'
         )`);
 
         const sql = `SELECT * FROM materials WHERE ${conditions.join(' AND ')} ORDER BY last_seen DESC LIMIT @limit`;
         const params: Record<string, unknown> = { limit };
         for (let i = 0; i < keywords.length; i++) {
-            params[`kw${i}`] = `%${keywords[i]}%`;
+            params[`kw${i}`] = `%${keywords[i].replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
         }
 
         const rows = this.db.prepare(sql).all(params) as Record<string, unknown>[];
@@ -814,17 +849,18 @@ export class MemoryStore {
 
         // vec0 requires BigInt rowid; simplest path is to let SQLite auto-assign
         // via INSERT without rowid, then record the generated rowid in our map.
-        if (existing) {
-            this.db.prepare(`DELETE FROM material_embeddings WHERE rowid = ?`).run(existing.vec_rowid);
-            this.db.prepare(`DELETE FROM material_embedding_map WHERE material_id = ?`).run(materialId);
-        }
-
-        const info = this.stmtUpsertMaterialEmbedding.run(embBuffer);
-        const newVecRowid = info.lastInsertRowid;
-
-        this.db.prepare(
-            `INSERT INTO material_embedding_map (material_id, vec_rowid) VALUES (?, ?)`
-        ).run(materialId, newVecRowid);
+        // One transaction: a rejected vector (e.g. wrong dimension) must not
+        // delete the previous embedding.
+        this.db.transaction(() => {
+            if (existing) {
+                this.db.prepare(`DELETE FROM material_embeddings WHERE rowid = ?`).run(existing.vec_rowid);
+                this.db.prepare(`DELETE FROM material_embedding_map WHERE material_id = ?`).run(materialId);
+            }
+            const info = this.stmtUpsertMaterialEmbedding.run(embBuffer);
+            this.db.prepare(
+                `INSERT INTO material_embedding_map (material_id, vec_rowid) VALUES (?, ?)`
+            ).run(materialId, info.lastInsertRowid);
+        })();
     }
 
     /**
@@ -832,7 +868,7 @@ export class MemoryStore {
      */
     searchMaterialsByVector(queryEmbedding: Float32Array, limit = 10): Array<{ materialId: string; distance: number }> {
         const rows = this.stmtSearchByVector.all({
-            query: Buffer.from(queryEmbedding.buffer),
+            query: Buffer.from(queryEmbedding.buffer, queryEmbedding.byteOffset, queryEmbedding.byteLength),
             limit,
         }) as Array<{ material_id: string; distance: number }>;
 
@@ -886,6 +922,22 @@ export class MemoryStore {
      * frames if over the per-material budget. Returns the number of frames evicted.
      */
     addFrame(frame: MaterialFrame, hash: string): number {
+        return this.db.transaction(() => this.addFrameTx(frame, hash))();
+    }
+
+    private addFrameTx(frame: MaterialFrame, hash: string): number {
+        // frames.material_id is a foreign key (better-sqlite3 enforces FKs).
+        // If the material row is missing — e.g. its save-material was
+        // dropped while memory was frozen and is never re-sent — create a
+        // minimal row from the frame instead of losing every later frame.
+        this.db.prepare(`
+            INSERT OR IGNORE INTO materials
+                (material_id, title, window_id, application, bundle_id, first_seen, last_seen)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+        `).run(
+            frame.materialId, frame.title ?? '', frame.windowId,
+            frame.application, frame.bundleId, frame.timestamp, frame.timestamp,
+        );
         this.stmtInsertFrame.run(
             frame.frameId,
             frame.materialId,
@@ -1068,18 +1120,21 @@ export class MemoryStore {
         const now = Date.now();
         const ts = event.timestamp || now;
         const level = event.level || 'action';
+        // Fields missing from this event must not overwrite what the task
+        // already has (COALESCE keeps the stored value on NULL); the insert
+        // statement applies the defaults.
 
         const txn = this.db.transaction(() => {
             this.stmtUpsertTask.run({
                 task_id: event.taskId,
-                label: event.taskLabel || 'Unknown task',
+                label: event.taskLabel || null,
                 description: event.taskDescription || null,
                 application: event.application || null,
                 confidence: event.confidence ?? null,
-                status: event.status || 'TASK_DETECTED',
+                status: event.status || null,
                 approach: event.approach || null,
                 parent_task_id: event.parentTaskId || null,
-                level,
+                level: event.level || null,
                 ts,
                 now,
             });
@@ -1173,6 +1228,17 @@ export class MemoryStore {
         const name = encounter.name.trim().replace(/\s+/g, ' ');
 
         const txn = this.db.transaction((): { personId: string; isNew: boolean } => {
+            // ── Replay guard: the same encounter (or detector event) seen
+            // again must not bump counts or create an orphan person.
+            const replay = this.db.prepare(`
+                SELECT person_id FROM person_encounters
+                WHERE encounter_id = @eid
+                   OR (@det IS NOT NULL AND detector_event_id = @det)
+                LIMIT 1
+            `).get({ eid: encounter.encounterId, det: encounter.detectorEventId ?? null }) as
+                { person_id: string } | undefined;
+            if (replay) return { personId: replay.person_id, isNew: false };
+
             // ── Resolve existing person ──────────────────────────────────
             type DedupeRow = { person_id: string; name: string };
             let personId: string | undefined;
@@ -1312,17 +1378,22 @@ export class MemoryStore {
         endedAt: number;
         durationMs: number;
     }): void {
+        // A negative / non-finite duration (wall clock moved backwards)
+        // counts as zero so it can't reduce the running total.
+        const durationMs = Number.isFinite(session.durationMs) ? Math.max(0, session.durationMs) : 0;
         const txn = this.db.transaction(() => {
-            this.stmtInsertFocusSession.run({
+            const info = this.stmtInsertFocusSession.run({
                 session_id:  session.sessionId,
                 material_id: session.materialId,
                 started_at:  session.startedAt,
                 ended_at:    session.endedAt,
-                duration_ms: session.durationMs,
+                duration_ms: durationMs,
             });
+            // A replayed session id is ignored by the insert; don't count it twice.
+            if (info.changes === 0) return;
             this.stmtAccumulateMaterialTime.run({
                 material_id: session.materialId,
-                duration_ms: session.durationMs,
+                duration_ms: durationMs,
             });
         });
         txn();
@@ -1346,6 +1417,9 @@ export class MemoryStore {
      * A 7-day half-life means yesterday counts at 100%, last week at 50%, last month at ~10%.
      */
     computeAllMaterialWeights(halfLifeDays = 7): Record<string, number> {
+        if (!(halfLifeDays > 0)) {
+            throw new RangeError(`halfLifeDays must be > 0 (got ${halfLifeDays})`);
+        }
         const rows = this.stmtGetAllFocusSessions.all() as Array<{
             material_id: string;
             started_at: number;
@@ -1360,7 +1434,9 @@ export class MemoryStore {
         // Accumulate decayed score (in ms) per material
         const scores = new Map<string, number>();
         for (const row of rows) {
-            const ageMs = nowMs - row.started_at;
+            // Sessions "in the future" (clock moved backwards) count as fresh;
+            // a negative age would otherwise inflate the weight (or give NaN).
+            const ageMs = Math.max(0, nowMs - row.started_at);
             const decay = Math.exp(-lambda * ageMs);
             scores.set(row.material_id, (scores.get(row.material_id) ?? 0) + row.duration_ms * decay);
         }
@@ -1392,6 +1468,9 @@ export class MemoryStore {
      * Returns the computed weights for callers that need them.
      */
     recomputeAllPersonWeights(halfLifeDays = 7): Record<string, number> {
+        if (!(halfLifeDays > 0)) {
+            throw new RangeError(`halfLifeDays must be > 0 (got ${halfLifeDays})`);
+        }
         const rows = this.stmtGetAllPersonEncounterWeights.all() as Array<{
             person_id: string;
             weight: number;
@@ -1405,7 +1484,7 @@ export class MemoryStore {
 
         const scores = new Map<string, number>();
         for (const row of rows) {
-            const ageMs = nowMs - row.timestamp;
+            const ageMs = Math.max(0, nowMs - row.timestamp);
             const decay = Math.exp(-lambda * ageMs);
             scores.set(row.person_id, (scores.get(row.person_id) ?? 0) + row.weight * decay);
         }

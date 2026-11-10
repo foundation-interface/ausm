@@ -67,6 +67,10 @@ def main():
         except json.JSONDecodeError as e:
             sys.stderr.write(f"[ocr-worker] bad request line: {e}\n")
             continue
+        if not isinstance(msg, dict):
+            # e.g. a JSON array/number: reply instead of crashing the worker
+            send({"requestId": None, "ok": False, "error": "request must be a JSON object"})
+            continue
 
         request_id = msg.get("requestId")
         if msg.get("cmd") != "ocr":

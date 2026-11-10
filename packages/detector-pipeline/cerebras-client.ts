@@ -23,8 +23,12 @@ export interface CerebrasDetectorClientConfig {
     apiKey: string;
     model: string;
     baseUrl?: string;
+    /** Per-attempt request timeout in ms (default: 30000). */
+    timeoutMs?: number;
     onTrace?: (trace: PromptTrace) => void;
 }
+
+export const CEREBRAS_DEFAULT_TIMEOUT_MS = 30_000;
 
 interface ChatMessageContentPart {
     type: 'text' | 'image_url';
@@ -103,19 +107,38 @@ export class CerebrasDetectorClient implements DetectorModelClient {
         for (let attempt = 0; attempt <= maxRetries; attempt++) {
             try {
                 const tSend = performance.now();
-                const response = await fetch(this.endpoint, {
-                    method: 'POST',
-                    headers: {
-                        Authorization: `Bearer ${this.config.apiKey}`,
-                        'Content-Type': 'application/json',
-                    },
-                    body: JSON.stringify(body),
-                });
-                const rawBody = await response.text();
+                const timeoutMs = this.config.timeoutMs ?? CEREBRAS_DEFAULT_TIMEOUT_MS;
+                const controller = new AbortController();
+                const timer = setTimeout(() => controller.abort(), timeoutMs);
+                let response: Response;
+                let rawBody: string;
+                try {
+                    response = await fetch(this.endpoint, {
+                        method: 'POST',
+                        headers: {
+                            Authorization: `Bearer ${this.config.apiKey}`,
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify(body),
+                        signal: controller.signal,
+                    });
+                    rawBody = await response.text();
+                } catch (fetchErr) {
+                    if (controller.signal.aborted) {
+                        throw flagRetryable(new Error(`Cerebras request timed out after ${timeoutMs}ms`), false);
+                    }
+                    throw fetchErr;
+                } finally {
+                    clearTimeout(timer);
+                }
                 const modelLatencyMs = Math.round(performance.now() - tSend);
 
                 if (!response.ok) {
-                    throw new Error(formatHttpError(response.status, rawBody));
+                    // Decide retry from the status code, not from digits that may appear in the body.
+                    throw flagRetryable(
+                        new Error(formatHttpError(response.status, rawBody)),
+                        RETRYABLE_HTTP_STATUS.has(response.status),
+                    );
                 }
 
                 const parsed = parseChatResponse(rawBody);
@@ -132,13 +155,14 @@ export class CerebrasDetectorClient implements DetectorModelClient {
 
                 return { triggered, rawResponse: parsed, modelLatencyMs, parseMs, attempt };
             } catch (err) {
+                const flagged = (err as { retryable?: unknown } | null)?.retryable;
                 const isRetryable = err instanceof Error && (
-                    err.message.includes('429')
-                    || err.message.includes('RESOURCE_EXHAUSTED')
-                    || err.message.includes('502')
-                    || err.message.includes('503')
-                    || err.message.includes('not valid JSON')
-                    || err.message.includes('empty response')
+                    typeof flagged === 'boolean'
+                        ? flagged
+                        : /\b(429|502|503)\b/.test(err.message)
+                            || err.message.includes('RESOURCE_EXHAUSTED')
+                            || err.message.includes('not valid JSON')
+                            || err.message.includes('empty response')
                 );
 
                 if (isRetryable && attempt < maxRetries) {
@@ -198,6 +222,13 @@ export class CerebrasDetectorClient implements DetectorModelClient {
             // Observer errors must not break evaluation
         }
     }
+}
+
+const RETRYABLE_HTTP_STATUS = new Set([429, 502, 503]);
+
+function flagRetryable(err: Error, retryable: boolean): Error {
+    (err as Error & { retryable?: boolean }).retryable = retryable;
+    return err;
 }
 
 function parseChatResponse(rawBody: string): string {

@@ -23,6 +23,11 @@ async function getExtractor(): Promise<any> {
         });
         return pipelineInstance;
     })();
+    // Don't cache a failed load (e.g. offline on first run): let the next
+    // call retry instead of failing forever.
+    loadingPromise.catch(() => {
+        loadingPromise = null;
+    });
 
     return loadingPromise;
 }
@@ -47,7 +52,8 @@ export async function embedBatch(texts: string[]): Promise<Float32Array[]> {
     const results: Float32Array[] = [];
     const raw = output.data as Float32Array;
     for (let i = 0; i < texts.length; i++) {
-        results.push(new Float32Array(raw.buffer, i * EMBEDDING_DIM * 4, EMBEDDING_DIM));
+        // subarray (not `new Float32Array(raw.buffer, …)`) honours raw.byteOffset
+        results.push(raw.subarray(i * EMBEDDING_DIM, (i + 1) * EMBEDDING_DIM));
     }
     return results;
 }

@@ -52,6 +52,11 @@ public final class CursorMonitor {
     private var moveThrottle: EventThrottle
     private var dragThrottle: EventThrottle
 
+    /// Monotonic seconds used for throttling and hold timing (injectable for tests). Wall-clock
+    /// time (CFAbsoluteTime) jumps when the system clock is changed, which used to stall the
+    /// throttles or report bogus hold durations.
+    var clock: () -> TimeInterval = { ProcessInfo.processInfo.systemUptime }
+
     public init(options: Options = Options()) {
         self.options = options
         self.hold = HoldTracker(thresholdMs: options.holdThresholdMs, tolerance: options.holdMoveTolerance)
@@ -162,7 +167,7 @@ public final class CursorMonitor {
 
     func handleEvent(_ type: CGEventType, _ cgEvent: CGEvent) {
         let point = cgEvent.location
-        let now = CFAbsoluteTimeGetCurrent()
+        let now = clock()
 
         switch type {
         case .mouseMoved:
@@ -217,7 +222,7 @@ public final class CursorMonitor {
         holdTimer?.cancel()
         let item = DispatchWorkItem { [weak self] in
             guard let self = self, self.hold.isPressed else { return }
-            if let elapsed = self.hold.update(at: nil, time: CFAbsoluteTimeGetCurrent()) {
+            if let elapsed = self.hold.update(at: nil, time: self.clock()) {
                 self.emitInteraction(action: "HOLD_START", point: self.hold.downPoint, button: 0, holdDurationMs: elapsed)
             }
         }
@@ -227,7 +232,7 @@ public final class CursorMonitor {
 
     // MARK: - Emit Helpers
 
-    private func handleMove(_ point: CGPoint, now: CFAbsoluteTime) {
+    private func handleMove(_ point: CGPoint, now: TimeInterval) {
         guard moveThrottle.shouldEmit(at: now) else { return }
 
         var event = CursorEvent(type: "cursor-event")

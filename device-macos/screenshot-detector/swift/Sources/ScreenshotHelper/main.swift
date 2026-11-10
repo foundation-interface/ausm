@@ -1,7 +1,8 @@
 /// ScreenshotHelper — standalone macOS process that monitors screenshot activity
 /// and streams JSON events to stdout. Thin wrapper over ScreenshotMonitorKit.
 ///
-/// Usage: ScreenshotHelper [--debug]
+/// Usage: ScreenshotHelper [--debug] [--hotkey-only]
+///   --hotkey-only  ignore screencapture processes not launched by the screenshot hotkeys
 ///
 /// Protocol:
 ///   stdout → one JSON object per line (line-buffered) for each screenshot event
@@ -10,9 +11,9 @@
 ///
 /// Events (type field; every event also carries `timestamp`, ms since epoch):
 ///   ready
-///   screencapture_started    { pid, mode, destination }
+///   screencapture_started    { pid, mode, destination, origin: hotkey | cli | unknown }
 ///   selection_rect_changed   { rect, displayId }
-///   screencapture_ended      { pid, mode, destination, cancelled,
+///   screencapture_ended      { pid, mode, destination, origin, cancelled,
 ///                              imagePath?, imageWidth?, imageHeight?, imageMimeType?, rect?,
 ///                              displayId?, scale? }
 ///   screencaptureui_started / screencaptureui_ended { pid }
@@ -34,6 +35,7 @@ setvbuf(stdout, nil, _IOLBF, 0)
 var options = ScreenshotMonitor.Options()
 options.writeTempFile = true
 options.debugLogging = CommandLine.arguments.contains("--debug")
+options.hotkeyOnly = CommandLine.arguments.contains("--hotkey-only")
 
 let monitor = ScreenshotMonitor(options: options)
 monitor.onEvent = { event in

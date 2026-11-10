@@ -1,4 +1,4 @@
-import { ChildProcess, spawn } from 'child_process';
+import { ChildProcess, spawn, type SpawnOptions } from 'child_process';
 import { createInterface } from 'readline';
 
 /**
@@ -29,6 +29,8 @@ export interface HelperProcessOptions {
     log?: (message: string) => void;
     /** Raw stderr from the helper; only called when set. */
     onStderr?: (text: string) => void;
+    /** Process launcher (default: child_process.spawn). Injected by tests. */
+    spawn?: (command: string, args: string[], options: SpawnOptions) => ChildProcess;
 }
 
 const KILL_TIMEOUT_MS = 2000;
@@ -71,7 +73,7 @@ export class HelperProcess {
     private spawnChild(): boolean {
         let child: ChildProcess;
         try {
-            child = spawn(this.opts.binary, this.opts.args ?? [], {
+            child = (this.opts.spawn ?? spawn)(this.opts.binary, this.opts.args ?? [], {
                 stdio: ['ignore', 'pipe', 'pipe'],
             });
         } catch (err) {
@@ -110,7 +112,13 @@ export class HelperProcess {
                     return;
                 }
                 if (msg && typeof msg === 'object' && typeof (msg as { type?: unknown }).type === 'string') {
-                    this.opts.onMessage(msg as { type: string });
+                    try {
+                        this.opts.onMessage(msg as { type: string });
+                    } catch (err) {
+                        // A throwing listener must not escape the readline loop (it would be an
+                        // uncaught exception in the host process).
+                        this.opts.onError(new Error(`${this.opts.name}: message listener threw: ${(err as Error).message}`));
+                    }
                 } else {
                     this.opts.log?.(`${this.opts.name}: line without a "type" field`);
                 }

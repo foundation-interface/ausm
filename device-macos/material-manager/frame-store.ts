@@ -132,21 +132,17 @@ export class FrameStore {
         }
     }
 
-    /** Add newer columns to existing databases. */
+    /** Add newer columns to existing databases (each checked independently). */
     private migrateMaterialsTable(): void {
-        try {
-            const info = this.db.pragma('table_info(materials)') as { name: string }[];
-            const hasType = info.some((c) => c.name === 'material_type');
-            if (!hasType) {
-                this.db.exec(`ALTER TABLE materials ADD COLUMN material_type TEXT`);
-                this.db.exec(`ALTER TABLE materials ADD COLUMN material_type_confidence REAL`);
-            }
-            const hasAppMetadata = info.some((c) => c.name === 'app_metadata');
-            if (!hasAppMetadata) {
-                this.db.exec(`ALTER TABLE materials ADD COLUMN app_metadata TEXT`);
-            }
-        } catch {
-            // Non-fatal; table might not exist yet
+        const info = this.db.pragma('table_info(materials)') as { name: string }[];
+        const have = new Set(info.map((c) => c.name));
+        const added: Array<[string, string]> = [
+            ['material_type', 'TEXT'],
+            ['material_type_confidence', 'REAL'],
+            ['app_metadata', 'TEXT'],
+        ];
+        for (const [name, type] of added) {
+            if (!have.has(name)) this.db.exec(`ALTER TABLE materials ADD COLUMN ${name} ${type}`);
         }
     }
 
@@ -222,7 +218,7 @@ export class FrameStore {
         this.stmtUpdateMaterial = this.db.prepare(`
             UPDATE materials SET
                 last_frame_hash = ?,
-                last_seen = ?,
+                last_seen = MAX(?, last_seen),
                 document_path = COALESCE(?, document_path)
             WHERE material_id = ?
         `);

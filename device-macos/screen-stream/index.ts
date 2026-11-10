@@ -80,7 +80,12 @@ export class ScreenStreamingService {
      * Stop streaming and shut down the helper process.
      */
     async stop(): Promise<boolean> {
-        if (!this.running) return false;
+        if (!this.running) {
+            // start() may still be in flight (or the helper may have crashed): make sure no
+            // helper is left behind. An in-flight start() then fails and returns false.
+            try { await this.helper.stop(); } catch { /* ignore */ }
+            return false;
+        }
 
         try {
             await this.helper.stopStream();

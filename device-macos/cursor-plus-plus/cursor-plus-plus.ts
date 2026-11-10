@@ -46,6 +46,10 @@ function helperBinary(): string {
     return resolveHelperBinary(__dirname, 'cursor-helper', 'CursorHelper');
 }
 
+const KNOWN_ACTIONS: ReadonlySet<string> = new Set<MouseActionLike>([
+    'MOVE', 'CLICK', 'DOUBLE_CLICK', 'RIGHT_CLICK', 'SCROLL', 'HOLD_START', 'HOLD_END', 'DRAG',
+]);
+
 /** CursorHelper exit code: the event tap could not be created (Accessibility missing). */
 const EXIT_NO_ACCESSIBILITY = 2;
 
@@ -65,6 +69,11 @@ export class CursorPlusPlusService extends EventEmitter {
 
     private lastX = 0;
     private lastY = 0;
+
+    /** Serialises 'cursor-event' emission so slow enrichment never reorders events. */
+    private emitQueue: Promise<void> = Promise.resolve();
+    /** Bumped by stop(): enrichment still in flight from an earlier run is dropped. */
+    private generation = 0;
 
     constructor(private config: CursorPlusPlusConfig = {}) {
         super();
@@ -113,6 +122,7 @@ export class CursorPlusPlusService extends EventEmitter {
     }
 
     stop(): boolean {
+        this.generation++;
         this.helper?.stop();
         this.helper = null;
         return true;
@@ -183,26 +193,36 @@ export class CursorPlusPlusService extends EventEmitter {
 
         const action = data.action;
         if (!action) return;
+        if (!KNOWN_ACTIONS.has(action)) {
+            this.logDebug(`Ignoring unknown action: ${String(action).slice(0, 40)}`);
+            return;
+        }
 
         // Always track position
         if (data.x != null) this.lastX = data.x;
         if (data.y != null) this.lastY = data.y;
 
         if (action === 'MOVE') {
-            this.handleMove(data);
-            return;
+            (this as EventEmitter).emit('cursor-move', data.x ?? 0, data.y ?? 0);
         }
 
-        // Interaction event — enrich asynchronously
-        this.enrichAndEmit(data).catch((err) => {
-            this.handleError(`Enrichment failed: ${(err as Error).message}`);
-        });
+        // Enrichment (material lookup, screenshot crop) starts now and runs concurrently,
+        // but events are emitted strictly in the order the helper reported them, and
+        // never after stop().
+        const generation = this.generation;
+        const payload = action === 'MOVE' ? this.buildMovePayload(data) : this.enrich(data);
+        this.emitQueue = this.emitQueue
+            .then(() => payload)
+            .then((p) => {
+                if (generation === this.generation) (this as EventEmitter).emit('cursor-event', p);
+            })
+            .catch((err) => {
+                this.handleError(`Enrichment failed: ${(err as Error).message}`);
+            });
     }
 
-    private handleMove(data: NativeCursorEvent): void {
+    private buildMovePayload(data: NativeCursorEvent): Promise<CursorEventLike> {
         const now = Date.now();
-
-        (this as EventEmitter).emit('cursor-move', data.x ?? 0, data.y ?? 0);
 
         // MOVE events are lightweight — no enrichment unless explicitly requested
         if (!this.enrichActions.has('MOVE')) {
@@ -223,16 +243,13 @@ export class CursorPlusPlusService extends EventEmitter {
                 uiElementValue: data.uiElementValue ?? null,
                 uiElementIsEditableText: data.uiElementIsEditableText ?? null,
             };
-            (this as EventEmitter).emit('cursor-event', payload);
-            return;
+            return Promise.resolve(payload);
         }
 
-        this.enrichAndEmit(data).catch((err) => {
-            this.handleError(`Move enrichment failed: ${(err as Error).message}`);
-        });
+        return this.enrich(data);
     }
 
-    private async enrichAndEmit(data: NativeCursorEvent): Promise<void> {
+    private async enrich(data: NativeCursorEvent): Promise<CursorEventLike> {
         const now = Date.now();
         const windowId = data.windowId ?? null;
 
@@ -285,8 +302,6 @@ export class CursorPlusPlusService extends EventEmitter {
             interactionScreenshot,
         };
 
-        (this as EventEmitter).emit('cursor-event', payload);
-
         if (this.debug) {
             this.logDebug(
                 `${data.action}: (${data.x},${data.y}) ` +
@@ -294,6 +309,7 @@ export class CursorPlusPlusService extends EventEmitter {
                 `ax=${data.uiElementRole ?? '?'} screenshot=${interactionScreenshot ? `${interactionScreenshot.width}x${interactionScreenshot.height}` : 'no'}`,
             );
         }
+        return payload;
     }
 
     /**

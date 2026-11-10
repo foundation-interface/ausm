@@ -164,7 +164,15 @@ export function serveAUSMScreenshotCache(): void {
         protocol.handle(AUSM_SCREENSHOT_SCHEME, (request) => {
             const match = request.url.match(/^ausm-screenshot:\/\/screenshot\/(.+)$/);
             if (!match) return new Response('Not Found', { status: 404 });
-            const id = decodeURIComponent(match[1]);
+            let id: string;
+            try {
+                id = decodeURIComponent(match[1]);
+            } catch {
+                return new Response('Not Found', { status: 404 });
+            }
+            // Cache ids are generated as [A-Za-z0-9_-]+; anything else (e.g. "../") could
+            // escape the cache directory and read arbitrary .jpg files.
+            if (!/^[A-Za-z0-9_-]+$/.test(id)) return new Response('Not Found', { status: 404 });
             const filePath = path.join(screenshotCacheDir(), `${id}.jpg`);
             if (!fs.existsSync(filePath)) return new Response('Not Found', { status: 404 });
             const buf = fs.readFileSync(filePath);

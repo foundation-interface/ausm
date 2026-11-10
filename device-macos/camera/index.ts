@@ -37,6 +37,8 @@ import {
 
 const MAX_RESTART_ATTEMPTS = 5;
 const MAX_RESTART_DELAY_MS = 30_000;
+/** A helper that ran this long is considered healthy; the restart budget resets. */
+const STABLE_RUN_MS = 60_000;
 
 /**
  * Camera Streaming Service
@@ -52,6 +54,9 @@ export class CameraStreamingService {
     private requestedDeviceIds: string[] | undefined;
     private restartAttempts = 0;
     private restartTimer: NodeJS.Timeout | null = null;
+    /** The caller wants streaming (set by start(), cleared by stop()). */
+    private wanted = false;
+    private startedAt = 0;
 
     constructor(config: StreamConfig = {}) {
         this.helper = new HelperClient(config.socketPath, config.debug ?? false);
@@ -63,6 +68,12 @@ export class CameraStreamingService {
     private handleHelperExit(evt: HelperExitEvent): void {
         if (!this.running) return;
         this.running = false;
+        if (Date.now() - this.startedAt > STABLE_RUN_MS) this.restartAttempts = 0;
+        this.scheduleRestart(evt);
+    }
+
+    private scheduleRestart(evt: HelperExitEvent): void {
+        if (!this.wanted) return;
         if (this.restartAttempts >= MAX_RESTART_ATTEMPTS) {
             console.error(
                 `[CameraStreamingService] Helper exited (code=${evt.code}, signal=${evt.signal}); giving up after ${MAX_RESTART_ATTEMPTS} restarts`,
@@ -76,8 +87,10 @@ export class CameraStreamingService {
         }
         this.restartTimer = setTimeout(() => {
             this.restartTimer = null;
-            void this.start(this.requestedDeviceIds).then((ok) => {
-                if (ok) this.restartAttempts = 0;
+            if (!this.wanted) return;
+            void this.startInternal(this.requestedDeviceIds).then((ok) => {
+                // A failed attempt keeps backing off instead of silently ending the retries.
+                if (!ok) this.scheduleRestart(evt);
             });
         }, delay);
         this.restartTimer.unref?.();
@@ -88,6 +101,13 @@ export class CameraStreamingService {
      * Spawns the helper process, configures it, and starts streaming.
      */
     async start(deviceIds?: string[]): Promise<boolean> {
+        if (this.running) return false;
+        this.wanted = true;
+        this.restartAttempts = 0;
+        return this.startInternal(deviceIds);
+    }
+
+    private async startInternal(deviceIds?: string[]): Promise<boolean> {
         if (this.running) return false;
         this.requestedDeviceIds = deviceIds;
 
@@ -103,10 +123,16 @@ export class CameraStreamingService {
                 }
             }
             await this.helper.startStream(ids);
+            if (!this.wanted) {
+                // stop() was called while this start was in flight.
+                try { await this.helper.stop(); } catch { /* ignore */ }
+                return false;
+            }
             this.running = true;
+            this.startedAt = Date.now();
             return true;
         } catch (err) {
-            console.error('[CameraStreamingService] Failed to start:', err);
+            console.error('[CameraStreamingService] Failed to start:', (err as Error).message);
             try { await this.helper.stop(); } catch { /* ignore */ }
             return false;
         }
@@ -116,6 +142,7 @@ export class CameraStreamingService {
      * Stop streaming and shut down the helper process.
      */
     async stop(): Promise<boolean> {
+        this.wanted = false;
         if (this.restartTimer) {
             clearTimeout(this.restartTimer);
             this.restartTimer = null;

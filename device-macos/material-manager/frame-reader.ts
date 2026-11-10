@@ -106,6 +106,9 @@ export class FrameReader {
     private restartAttempts = 0;
     private restartTimer: ReturnType<typeof setTimeout> | null = null;
 
+    /** In-progress start (spawned, waiting for "ready"), shared by concurrent callers. */
+    private startPromise: Promise<void> | null = null;
+
     /** Pending requests awaiting responses, keyed by requestId. */
     private pending = new Map<string, PendingRequest>();
 
@@ -132,9 +135,9 @@ export class FrameReader {
             clearTimeout(this.restartTimer);
             this.restartTimer = null;
         }
-        if (this.process) return Promise.resolve();
+        if (this.process) return this.startPromise ?? Promise.resolve();
 
-        return new Promise((resolve, reject) => {
+        const promise = new Promise<void>((resolve, reject) => {
             const resolvedScript = resolveFrameReaderScript();
 
             // Build PYTHONPATH so the subprocess can find screen_stream_reader
@@ -183,8 +186,13 @@ export class FrameReader {
                 this.logDebug(`Subprocess exited (code=${code}, signal=${signal})`);
                 const wasReady = this.ready && this.process === child;
                 settle(new Error(`Frame reader exited before ready (code=${code}, signal=${signal})`));
-                this.rejectAllPending(new Error('Frame reader subprocess exited'));
-                if (this.process === child) this.cleanup();
+                // A previous worker that exits late (after stop() + start())
+                // must not reject the requests of its replacement; stop()
+                // already rejected the ones it owned.
+                if (this.process === child) {
+                    this.rejectAllPending(new Error('Frame reader subprocess exited'));
+                    this.cleanup();
+                }
                 if (wasReady && !this.stopping) this.scheduleRestart();
             });
 
@@ -229,6 +237,12 @@ export class FrameReader {
                 this.readline = rl;
             }
         });
+        this.startPromise = promise;
+        const clear = () => {
+            if (this.startPromise === promise) this.startPromise = null;
+        };
+        promise.then(clear, clear);
+        return promise;
     }
 
     /**
@@ -372,7 +386,23 @@ export class FrameReader {
         this.restartAttempts = 0;
 
         if (!resp.ok) {
-            pending.reject(new Error(resp.error ?? 'Unknown error from frame reader'));
+            pending.reject(new Error(
+                typeof resp.error === 'string' && resp.error ? resp.error : 'Unknown error from frame reader',
+            ));
+            return;
+        }
+
+        // Validate field types: a buggy or corrupted worker must not crash
+        // the host (Buffer.from(non-string) throws inside the line handler)
+        // or feed garbage into dedup.
+        const optNum = (v: unknown) => v === undefined || v === null || typeof v === 'number';
+        if (
+            typeof resp.hash !== 'string' ||
+            !optNum(resp.width) || !optNum(resp.height) ||
+            !optNum(resp.hammingDistance) || !optNum(resp.frameTimestamp) ||
+            (resp.frameData !== undefined && resp.frameData !== null && typeof resp.frameData !== 'string')
+        ) {
+            pending.reject(new Error('Malformed response from frame reader'));
             return;
         }
 

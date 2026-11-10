@@ -52,7 +52,16 @@ struct ScreenshotProcessScan {
         var buf = [UInt8](repeating: 0, count: size)
         guard sysctl(&mib, 3, &buf, &size, nil, 0) == 0, size > MemoryLayout<Int32>.size else { return nil }
 
-        let argc = Int(buf.withUnsafeBytes { $0.load(as: Int32.self) })
+        return parseProcArgs(Array(buf.prefix(size)))
+    }
+
+    /// Decode a KERN_PROCARGS2 buffer: Int32 argc, the executable path, NUL padding, then argc
+    /// NUL-terminated strings. Returns argv[1...]; nil when the buffer is too short to hold argc.
+    /// Truncated or malformed buffers yield the arguments that could be decoded.
+    static func parseProcArgs(_ buf: [UInt8]) -> [String]? {
+        let size = buf.count
+        guard size > MemoryLayout<Int32>.size else { return nil }
+        let argc = Int(buf.withUnsafeBytes { $0.loadUnaligned(as: Int32.self) })
         var i = MemoryLayout<Int32>.size
         // Skip the executable path and its padding NULs.
         while i < size && buf[i] != 0 { i += 1 }
@@ -85,6 +94,9 @@ struct ScreencaptureInvocation {
     var explicitRect: CGRect?
     /// Explicit window id (-l <id>).
     var windowID: CGWindowID?
+    /// Who launched it: the system hotkey handler (argv carries `-z keyboard.*`), some other
+    /// program running the CLI, or unknown (argv unreadable).
+    var origin: ScreenshotMonitor.Origin = .unknown
 
     init(arguments: [String]) {
         var i = 0
@@ -93,6 +105,7 @@ struct ScreencaptureInvocation {
             let a = arguments[i]
             if a == "-z", i + 1 < arguments.count {
                 let reason = arguments[i + 1]
+                if reason.hasPrefix("keyboard.") { origin = .hotkey }
                 if reason.hasPrefix("keyboard.screen") { mode = .screen }
                 else if reason.hasPrefix("keyboard.selection") { mode = .selection }
                 else if reason.hasPrefix("keyboard.interactive") { mode = .interactive }
@@ -118,9 +131,14 @@ struct ScreencaptureInvocation {
             }
             i += 1
         }
+        if origin == .unknown && !arguments.isEmpty { origin = .cli }
         if flags.contains("c") { destination = .clipboard }
         if flags.contains("U") { interactive = true; if mode == .unknown { mode = .interactive } }
-        else if flags.contains("i") { interactive = true; if mode == .unknown { mode = .selection } }
+        else if flags.contains("i") {
+            // -iw restricts the interactive capture to window selection.
+            interactive = true
+            if mode == .unknown { mode = flags.contains("w") ? .window : .selection }
+        }
         if flags.contains("w") && mode == .unknown { mode = .window }
         if explicitRect != nil && mode == .unknown { mode = .selection }
         if windowID != nil && mode == .unknown { mode = .window }

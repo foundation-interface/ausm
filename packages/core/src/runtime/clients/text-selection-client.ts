@@ -148,71 +148,42 @@ function loadNativeModule(): NativeModuleType | null {
     }
 }
 
+/** Lowercase word tokens of a bundle id / app name ("com.microsoft.VSCode" → com, microsoft, vscode). */
+function tokenize(name: string): string[] {
+    return name.toLowerCase().split(/[^a-z0-9]+/).filter(Boolean);
+}
+
 /**
- * Infer text element type from bundle identifier or localized name
+ * Infer text element type from bundle identifier or localized name.
+ *
+ * Matches whole words (multi-word patterns match a contiguous word run), the same
+ * rules as @ausm/device-macos-text-selection's adapter: "1Password" is not "word",
+ * "Research" is not "arc".
  */
 function inferTextElementType(programName: string, localizedName?: string): TextElementType {
-    const lowerName = programName.toLowerCase();
-    const lowerLocalizedName = (localizedName || '').toLowerCase();
-    
-    // Helper to check both names
-    const matches = (pattern: string) => lowerName.includes(pattern) || lowerLocalizedName.includes(pattern);
+    const tokenLists = [tokenize(programName || ''), tokenize(localizedName || '')];
+    const matchesAny = (patterns: string[]) =>
+        patterns.some((pattern) => {
+            const words = tokenize(pattern);
+            return tokenLists.some((tokens) => tokens.some((_, i) => words.every((w, j) => tokens[i + j] === w)));
+        });
 
-    // Code editors
-    if (
-        matches('vscode') ||
-        matches('cursor') ||
-        matches('xcode') ||
-        matches('sublime') ||
-        matches('jetbrains') ||
-        matches('intellij') ||
-        matches('visual studio code')
-    ) {
-        return TextElementType.CODE_EDITOR;
-    }
-
-    // Document editors
-    if (
-        matches('pages') ||
-        matches('word') ||
-        matches('textedit') ||
-        matches('notion') ||
-        matches('obsidian')
-    ) {
+    if (matchesAny([
+        'vscode', 'vscodeinsiders', 'cursor', 'xcode', 'sublime', 'sublimetext', 'atom',
+        'jetbrains', 'intellij', 'webstorm', 'pycharm', 'zed',
+        'vim', 'neovim', 'macvim', 'emacs', 'visual studio code',
+    ])) return TextElementType.CODE_EDITOR;
+    if (matchesAny(['pages', 'word', 'docs', 'notes', 'textedit', 'notion', 'obsidian', 'bear', 'microsoft word'])) {
         return TextElementType.DOCUMENT_EDITOR;
     }
-
-    // Email clients
-    if (matches('mail') || matches('outlook')) {
-        return TextElementType.EMAIL;
-    }
-
-    // Messaging apps
-    if (
-        matches('messages') ||
-        matches('slack') ||
-        matches('discord') ||
-        matches('telegram')
-    ) {
+    if (matchesAny(['mail', 'outlook', 'thunderbird', 'airmail', 'spark'])) return TextElementType.EMAIL;
+    if (matchesAny(['messages', 'slack', 'slackmacgap', 'discord', 'telegram', 'whatsapp', 'teams'])) {
         return TextElementType.MESSAGE;
     }
-
-    // PDF readers
-    if (matches('preview') || matches('pdf') || matches('acrobat')) {
-        return TextElementType.PDF_TEXT;
-    }
-
-    // Web browsers
-    if (
-        matches('safari') ||
-        matches('chrome') ||
-        matches('firefox') ||
-        matches('arc') ||
-        matches('google chrome')
-    ) {
+    if (matchesAny(['preview', 'pdf', 'acrobat'])) return TextElementType.PDF_TEXT;
+    if (matchesAny(['safari', 'chrome', 'firefox', 'edge', 'edgemac', 'arc', 'brave', 'opera', 'vivaldi'])) {
         return TextElementType.WEB_NON_EDITABLE_TEXT;
     }
-
     return TextElementType.OTHER;
 }
 
@@ -267,7 +238,7 @@ function toTextSelectionEventData(nativeData: NativeEvent & { type: 'text-select
         type: elementType,
         application: nativeData.programName,
         applicationLocalizedName: nativeData.localizedName,
-        screenBounds: nativeData.hasElementBounds ? {
+        screenBounds: nativeData.hasElementBounds && nativeData.elementWidth > 0 && nativeData.elementHeight > 0 ? {
             x: nativeData.elementX,
             y: nativeData.elementY,
             width: nativeData.elementWidth,
@@ -467,7 +438,11 @@ export class SelectionClient extends EventEmitter {
         if (this.debug) {
             console.error('[SelectionClient]', errorMsg);
         }
-        this.emit('error', new Error(errorMsg));
+        if (this.listenerCount('error') > 0) {
+            this.emit('error', new Error(errorMsg));
+        } else {
+            console.warn('[SelectionClient]', errorMsg);
+        }
     }
 
     private logDebug(message: string): void {

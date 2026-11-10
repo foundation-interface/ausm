@@ -2,7 +2,9 @@ import CoreGraphics
 import Foundation
 
 /// Rate limiter: lets an event through when at least `interval` seconds passed since the last
-/// one it let through. `interval <= 0` lets everything through.
+/// one it let through. `interval <= 0` lets everything through. A timestamp earlier than the
+/// last emitted one (clock moved backwards) also passes and restarts the interval, so the
+/// throttle can never get stuck suppressing events.
 struct EventThrottle {
     var interval: TimeInterval
     private var last: TimeInterval?
@@ -12,7 +14,7 @@ struct EventThrottle {
     }
 
     mutating func shouldEmit(at now: TimeInterval) -> Bool {
-        if interval > 0, let last = last, now - last < interval { return false }
+        if interval > 0, let last = last, now >= last, now - last < interval { return false }
         last = now
         return true
     }

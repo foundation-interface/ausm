@@ -64,7 +64,10 @@ final class NotificationServer {
 
     func sendNotification(_ notification: [String: Any]) {
         guard running else { return }
-        guard let jsonData = try? JSONSerialization.data(withJSONObject: notification) else { return }
+        // JSONSerialization raises an Objective-C exception (not a Swift error) for non-JSON
+        // values such as NaN or Date, which would abort the helper; validate first.
+        guard JSONSerialization.isValidJSONObject(notification),
+              let jsonData = try? JSONSerialization.data(withJSONObject: notification) else { return }
 
         var msgData = jsonData
         msgData.append(contentsOf: [UInt8(ascii: "\n")])
@@ -130,7 +133,17 @@ func bindPrivateUnixSocket(path: String) -> Int32 {
         return -1
     }
 
-    unlink(path)
+    // Replace a stale socket from a previous run, but never delete another kind of file
+    // (a misconfigured socketPath must not destroy the user's data).
+    var st = stat()
+    if lstat(path, &st) == 0 {
+        guard (st.st_mode & S_IFMT) == S_IFSOCK else {
+            NSLog("[Helper] Refusing to replace non-socket file at socket path")
+            errno = EEXIST
+            return -1
+        }
+        unlink(path)
+    }
     let fd = socket(AF_UNIX, SOCK_STREAM, 0)
     guard fd >= 0 else { return -1 }
 

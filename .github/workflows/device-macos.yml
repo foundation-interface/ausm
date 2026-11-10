@@ -61,9 +61,15 @@ jobs:
         run: |
           (cd device-macos/material-manager && npm test)
           (cd device-macos/text-selection && npm test)
+          for p in screenshot-detector clipboard-monitor cursor-plus-plus text-input viewport-manager camera; do
+            (cd device-macos/$p && npm test) || exit 1
+          done
+          (cd device-macos/screen-stream && npm run test:node)
+          (cd packages/core && npm test)
           pip install -r device-macos/material-manager/py/requirements.txt
           (cd device-macos/material-manager && npm run test:py)
           (cd device-macos/screen-stream && npm run test:python)
+          (cd device-macos/cursor-plus-plus/py && python3 -m unittest discover -s tests)
       - name: Package contents
         run: |
           for p in screenshot-detector cursor-plus-plus clipboard-monitor screen-stream camera \

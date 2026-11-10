@@ -7,7 +7,7 @@
 
 import { EventEmitter } from 'events';
 
-import type { TextInputEventData } from '../../events/TextInputEvent';
+import { TextInputStatus, type TextInputEventData } from '../../events/TextInputEvent';
 import { createAUSMUIElement } from '../../AUSM';
 
 import {
@@ -22,6 +22,16 @@ function generateEventID(): string {
     return `txt_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
 }
 
+/** Helper statuses (TEXT_EDITING_*) → core TextInputStatus (TEXT_INPUT_*). */
+const STATUS_MAP: Readonly<Record<string, TextInputStatus>> = {
+    TEXT_EDITING_STARTED: TextInputStatus.STARTED,
+    TEXT_EDITING_UPDATED: TextInputStatus.UPDATED,
+    TEXT_EDITING_FINISHED: TextInputStatus.ENDED,
+    [TextInputStatus.STARTED]: TextInputStatus.STARTED,
+    [TextInputStatus.UPDATED]: TextInputStatus.UPDATED,
+    [TextInputStatus.ENDED]: TextInputStatus.ENDED,
+};
+
 /**
  * Convert text-input service payload to TextInputEventData
  */
@@ -34,7 +44,7 @@ function toTextInputEventData(like: TextInputEventLike): TextInputEventData {
         sourceElement: like.sourceElement
             ? createAUSMUIElement(like.sourceElement)
             : null,
-        status: (like.status ?? null) as TextInputEventData['status'],
+        status: (like.status && STATUS_MAP[like.status]) || null,
         caretScreenPosition: like.caretScreenPosition ?? null,
     };
 }
@@ -84,7 +94,7 @@ export class TextInputClient extends EventEmitter {
         });
 
         this.monitor.on('error', (err: Error) => {
-            this.emit('error', err);
+            this.emitError(err);
         });
 
         this.monitor.on('status', (status: 'started' | 'stopped') => {
@@ -147,12 +157,21 @@ export class TextInputClient extends EventEmitter {
         return super.emit(event, ...args);
     }
 
+    private emitError(err: Error): void {
+        // EventEmitter throws on an unhandled 'error'; never crash the host for a sensor failure.
+        if (this.listenerCount('error') > 0) {
+            this.emit('error', err);
+        } else {
+            console.warn('[TextInputClient]', err.message);
+        }
+    }
+
     private handleError(message: string, err: Error): void {
         const errorMsg = `${message}: ${err.message}`;
         if (this.debug) {
             console.error('[TextInputClient]', errorMsg);
         }
-        this.emit('error', new Error(errorMsg));
+        this.emitError(new Error(errorMsg));
     }
 
     private logDebug(message: string): void {

@@ -34,6 +34,7 @@
     "clean": "rm -rf dist && cd swift && swift package clean",
     "rebuild": "npm run clean && npm run build",
     "typecheck": "tsc --noEmit",
+    "test": "node --import tsx --test tests/*.test.ts",
     "test:swift": "cd swift && swift test",
     "prepublishOnly": "npm run build"
   },

@@ -59,25 +59,38 @@ export class HttpHost {
 
         console.log(`[AUSM] Starting HTTP host: ${nodePath} ${args.join(' ')} (cwd=${cwd})`);
 
-        this.process = spawn(nodePath, args, {
+        const child = spawn(nodePath, args, {
             cwd,
             env,
             stdio: ['ignore', 'pipe', 'pipe'],
         });
+        this.process = child;
 
-        const ready = waitForListen(this.process, port);
-        this.process.on('error', (err) => {
+        const ready = waitForListen(child, port);
+        child.on('error', (err) => {
             console.warn('[AUSM] HTTP host error:', err.message);
         });
-        this.process.on('exit', (code) => {
+        child.on('exit', (code) => {
             if (code && code !== 0) {
                 console.warn(`[AUSM] HTTP host exited with code ${code}`);
             }
-            this.url = null;
-            this.process = null;
+            // A previous child exiting late must not clear a newer one.
+            if (this.process === child) {
+                this.url = null;
+                this.process = null;
+            }
         });
 
-        await ready;
+        try {
+            await ready;
+        } catch (err) {
+            // Do not leave an orphaned server behind when start() fails (e.g. listen timeout).
+            if (this.process === child) this.process = null;
+            if (child.pid !== undefined && child.exitCode === null && !child.killed) {
+                child.kill('SIGTERM');
+            }
+            throw err;
+        }
         this.url = `http://127.0.0.1:${port}`;
         console.log(`[AUSM] HTTP host listening on ${this.url} (db=${dbPath})`);
         return this.url;
@@ -177,16 +190,23 @@ function waitForListen(child: ChildProcess, port: number): Promise<void> {
             cleanup();
             reject(new Error(`HTTP host exited before listen (code ${code})`));
         };
+        // A spawn failure (e.g. ENOENT for nodePath) emits 'error' but never 'exit'.
+        const onError = (err: Error) => {
+            cleanup();
+            reject(new Error(`HTTP host failed to spawn: ${err.message}`));
+        };
 
         const cleanup = () => {
             clearTimeout(timeout);
             child.stderr?.off('data', onData);
             child.stdout?.off('data', onData);
             child.off('exit', onExit);
+            child.off('error', onError);
         };
 
         child.stderr?.on('data', onData);
         child.stdout?.on('data', onData);
         child.once('exit', onExit);
+        child.once('error', onError);
     });
 }

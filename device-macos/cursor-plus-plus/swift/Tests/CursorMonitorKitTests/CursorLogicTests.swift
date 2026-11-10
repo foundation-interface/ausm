@@ -137,3 +137,141 @@ final class CursorEventEncodingTests: XCTestCase {
         XCTAssertEqual(decoded.scrollDeltaY, -3)
     }
 }
+
+final class EventThrottleEdgeTests: XCTestCase {
+    func testBackwardsClockPassesAndRestartsInterval() {
+        // Regression: a timestamp before the last emitted one (clock set back) used to be
+        // suppressed until time caught up again.
+        var t = EventThrottle(interval: 0.05)
+        XCTAssertTrue(t.shouldEmit(at: 100))
+        XCTAssertTrue(t.shouldEmit(at: 50))
+        XCTAssertFalse(t.shouldEmit(at: 50.01))
+        XCTAssertTrue(t.shouldEmit(at: 50.06))
+    }
+
+    func testNegativeIntervalPassesEverything() {
+        var t = EventThrottle(interval: -1)
+        XCTAssertTrue(t.shouldEmit(at: 1))
+        XCTAssertTrue(t.shouldEmit(at: 1))
+    }
+
+    func testDuplicateTimestampIsThrottled() {
+        var t = EventThrottle(interval: 0.05)
+        XCTAssertTrue(t.shouldEmit(at: 3))
+        XCTAssertFalse(t.shouldEmit(at: 3))
+    }
+
+    func testIntervalChangeTakesEffect() {
+        var t = EventThrottle(interval: 1)
+        XCTAssertTrue(t.shouldEmit(at: 0))
+        XCTAssertFalse(t.shouldEmit(at: 0.5))
+        t.interval = 0
+        XCTAssertTrue(t.shouldEmit(at: 0.5))
+    }
+}
+
+final class HoldTrackerEdgeTests: XCTestCase {
+    func testToleranceBoundaryIsInclusive() {
+        var h = HoldTracker(thresholdMs: 400, tolerance: 5)
+        h.mouseDown(at: .zero, time: 0)
+        XCTAssertNotNil(h.update(at: CGPoint(x: 3, y: 4), time: 0.4))   // distance exactly 5
+    }
+
+    func testJustBeyondToleranceIsNotAHold() {
+        var h = HoldTracker(thresholdMs: 400, tolerance: 5)
+        h.mouseDown(at: .zero, time: 0)
+        XCTAssertNil(h.update(at: CGPoint(x: 3, y: 4.01), time: 0.4))
+        XCTAssertNil(h.mouseUp(at: .zero, time: 1))
+    }
+
+    func testThresholdBoundaryIsInclusive() {
+        var h = HoldTracker(thresholdMs: 400, tolerance: 5)
+        h.mouseDown(at: .zero, time: 10)
+        XCTAssertEqual(h.update(at: nil, time: 10.4) ?? 0, 400, accuracy: 0.001)
+    }
+
+    func testNegativeCoordinatesOnSecondaryDisplay() {
+        var h = HoldTracker(thresholdMs: 100, tolerance: 5)
+        h.mouseDown(at: CGPoint(x: -1920, y: -200), time: 0)
+        XCTAssertNotNil(h.update(at: CGPoint(x: -1918, y: -201), time: 0.2))
+        XCTAssertEqual(h.downPoint, CGPoint(x: -1920, y: -200))
+    }
+
+    func testNewPressResetsPreviousState() {
+        var h = HoldTracker(thresholdMs: 100, tolerance: 5)
+        h.mouseDown(at: .zero, time: 0)
+        XCTAssertNil(h.update(at: CGPoint(x: 100, y: 0), time: 0.05))   // wandered: drag
+        // A second mouseDown without an up (missed event) starts a fresh press.
+        h.mouseDown(at: CGPoint(x: 100, y: 0), time: 1)
+        XCTAssertFalse(h.holdStarted)
+        XCTAssertNotNil(h.update(at: nil, time: 1.2))
+    }
+
+    func testClockGoingBackwardsNeverStartsAHold() {
+        var h = HoldTracker(thresholdMs: 100, tolerance: 5)
+        h.mouseDown(at: .zero, time: 10)
+        XCTAssertNil(h.update(at: nil, time: 5))
+        XCTAssertNil(h.mouseUp(at: .zero, time: 5))
+    }
+
+    func testZeroThresholdHoldsImmediately() {
+        var h = HoldTracker(thresholdMs: 0, tolerance: 0)
+        h.mouseDown(at: .zero, time: 0)
+        XCTAssertEqual(h.update(at: nil, time: 0), 0)
+    }
+
+    func testResetMidPressDropsHold() {
+        var h = HoldTracker(thresholdMs: 100, tolerance: 5)
+        h.mouseDown(at: .zero, time: 0)
+        XCTAssertNotNil(h.update(at: nil, time: 0.2))
+        h.reset()
+        XCTAssertFalse(h.isPressed)
+        XCTAssertNil(h.mouseUp(at: .zero, time: 0.5))
+    }
+}
+
+final class CursorEventEncodingEdgeTests: XCTestCase {
+    func testUnicodeEmojiAndRTLStringsRoundTrip() throws {
+        var e = CursorEvent(type: "cursor-event")
+        e.action = "CLICK"
+        e.windowTitle = "שלום עולם — مرحبا 👩🏽‍💻 \u{202E}txet\u{202C}"
+        e.uiElementLabel = "\"quoted\"\n\ttab\\slash\u{0000}nul"
+        e.ownerName = "日本語アプリ"
+        e.uiElementValue = ""
+        let data = try JSONEncoder().encode(e)
+        // One line on the wire: newlines inside strings must be escaped.
+        XCTAssertFalse(data.contains(UInt8(ascii: "\n")))
+        let decoded = try JSONDecoder().decode(CursorEvent.self, from: data)
+        XCTAssertEqual(decoded.windowTitle, e.windowTitle)
+        XCTAssertEqual(decoded.uiElementLabel, e.uiElementLabel)
+        XCTAssertEqual(decoded.ownerName, e.ownerName)
+        XCTAssertEqual(decoded.uiElementValue, "", "empty strings are kept, not dropped as nil")
+    }
+
+    func testExtremeNumericValues() throws {
+        var e = CursorEvent(type: "cursor-event")
+        e.windowId = UInt32.max
+        e.x = -32768.25
+        e.y = 1e6
+        e.clickCount = Int.max
+        e.holdDurationMs = 0
+        let obj = try XCTUnwrap(JSONSerialization.jsonObject(with: JSONEncoder().encode(e)) as? [String: Any])
+        XCTAssertEqual((obj["windowId"] as? NSNumber)?.uint32Value, UInt32.max)
+        XCTAssertEqual(obj["x"] as? Double, -32768.25)
+        XCTAssertEqual(obj["holdDurationMs"] as? Double, 0)
+    }
+
+    func testDecodingIgnoresUnknownFieldsAndRequiresType() throws {
+        let json = #"{"type":"cursor-event","action":"MOVE","x":1,"y":2,"futureField":{"a":1}}"#
+        let e = try JSONDecoder().decode(CursorEvent.self, from: Data(json.utf8))
+        XCTAssertEqual(e.action, "MOVE")
+        XCTAssertThrowsError(try JSONDecoder().decode(CursorEvent.self, from: Data(#"{"action":"MOVE"}"#.utf8)))
+        XCTAssertThrowsError(try JSONDecoder().decode(CursorEvent.self, from: Data(#"{"type":"x","x":"1"}"#.utf8)))
+    }
+
+    func testNonFiniteValuesFailToEncodeRatherThanEmittingInvalidJSON() {
+        var e = CursorEvent(type: "cursor-event")
+        e.scrollDeltaY = .nan
+        XCTAssertThrowsError(try JSONEncoder().encode(e))
+    }
+}
