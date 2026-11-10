@@ -9,16 +9,24 @@
 ///   stderr -> diagnostics only (never typed text)
 ///
 /// Password fields (AXSecureTextField) are never reported.
+/// Thin wrapper over TextInputMonitorKit (all logic lives there).
 /// Exits on SIGTERM/SIGINT, stdin EOF (when stdin is a pipe), or when the parent process dies.
 
-import ApplicationServices
 import Foundation
+import TextInputMonitorKit
 
 // Line-buffer stdout so each JSON line is flushed immediately
 setvbuf(stdout, nil, _IOLBF, 0)
 signal(SIGPIPE, SIG_IGN)
 
 let monitor = TextInputMonitor()
+monitor.onEvent = { event in
+    if let line = event.wireLine { print(line) }
+}
+monitor.onError = { _, message in
+    // Diagnostics only; never typed text.
+    FileHandle.standardError.write(Data("[text-input-helper] \(message)\n".utf8))
+}
 monitor.start()
 
 func shutdown() -> Never {

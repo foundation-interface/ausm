@@ -1,6 +1,6 @@
 import ApplicationServices
 import XCTest
-@testable import TextInputHelper
+@testable import TextInputMonitorKit
 
 final class TextInputPolicyTests: XCTestCase {
     func testEditableRolesAreTracked() {
@@ -33,7 +33,7 @@ final class WireFormatTests: XCTestCase {
 
     func testTextInputEventShapeMatchesTextInputEventLike() throws {
         let evt = TextInputEvent(
-            status: "TEXT_EDITING_UPDATED",
+            status: .updated,
             text: "hello\nworld \u{1F600}",
             sourceElement: .init(type: "AXTextArea", application: "Notes", applicationID: "com.apple.Notes",
                                  applicationLocalizedName: "Notes",
@@ -53,7 +53,7 @@ final class WireFormatTests: XCTestCase {
     }
 
     func testNilTextIsOmitted() throws {
-        let evt = TextInputEvent(status: "TEXT_EDITING_STARTED", text: nil, sourceElement: nil,
+        let evt = TextInputEvent(status: .started, text: nil, sourceElement: nil,
                                  caretScreenPosition: nil, timestamp: 0)
         let obj = try json(evt)
         XCTAssertNil(obj["text"])

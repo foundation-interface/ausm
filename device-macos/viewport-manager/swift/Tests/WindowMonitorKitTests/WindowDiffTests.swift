@@ -1,15 +1,15 @@
 import CoreGraphics
 import XCTest
-@testable import ViewportHelper
+@testable import WindowMonitorKit
 
-private func snap(_ id: CGWindowID, pid: pid_t = 100, title: String = "Doc",
+func snap(_ id: CGWindowID, pid: pid_t = 100, title: String = "Doc",
                   bounds: CGRect = CGRect(x: 0, y: 0, width: 800, height: 600),
                   z: Int = 0, display: CGDirectDisplayID = 1, doc: String? = nil) -> WindowSnapshot {
     WindowSnapshot(windowId: id, title: title, ownerName: "App", bundleId: "com.example.app",
                    ownerPID: pid, bounds: bounds, layer: 0, zIndex: z, displayId: display, documentPath: doc)
 }
 
-private func map(_ snaps: [WindowSnapshot]) -> [String: WindowSnapshot] {
+func map(_ snaps: [WindowSnapshot]) -> [String: WindowSnapshot] {
     Dictionary(uniqueKeysWithValues: snaps.map { ($0.key, $0) })
 }
 
@@ -17,7 +17,7 @@ final class WindowDiffTests: XCTestCase {
     func testOpenAndClose() {
         let a = snap(1), b = snap(2, z: 1)
         let events = WindowDiff.diff(old: map([a]), new: map([b]))
-        XCTAssertEqual(events.map(\.type), ["window-closed", "window-opened"], "closes are emitted before opens")
+        XCTAssertEqual(events.map(\.type.rawValue), ["window-closed", "window-opened"], "closes are emitted before opens")
         XCTAssertEqual(events[0].windowId, 1)
         XCTAssertEqual(events[1].windowId, 2)
     }
@@ -30,7 +30,7 @@ final class WindowDiffTests: XCTestCase {
     func testTitleChangeCarriesOldTitle() {
         let events = WindowDiff.diff(old: map([snap(1, title: "A")]), new: map([snap(1, title: "B")]))
         XCTAssertEqual(events.count, 1)
-        XCTAssertEqual(events[0].type, "title-changed")
+        XCTAssertEqual(events[0].type, .titleChanged)
         XCTAssertEqual(events[0].title, "B")
         XCTAssertEqual(events[0].oldTitle, "A")
     }
@@ -39,7 +39,7 @@ final class WindowDiffTests: XCTestCase {
         let old = snap(1, bounds: CGRect(x: 0, y: 0, width: 800, height: 600))
         let new = snap(1, bounds: CGRect(x: 10, y: 20, width: 800, height: 600))
         let events = WindowDiff.diff(old: map([old]), new: map([new]))
-        XCTAssertEqual(events.map(\.type), ["bounds-changed"])
+        XCTAssertEqual(events.map(\.type.rawValue), ["bounds-changed"])
         XCTAssertEqual(events[0].oldBounds?.x, 0)
         XCTAssertEqual(events[0].bounds.x, 10)
     }
@@ -49,12 +49,12 @@ final class WindowDiffTests: XCTestCase {
         let moved = CGRect(x: 50, y: 0, width: 800, height: 600)
         let new = map([snap(1, title: "Renamed", bounds: moved), snap(2, bounds: moved, z: 1)])
         let events = WindowDiff.diff(old: old, new: new)
-        XCTAssertEqual(events.map(\.type), ["title-changed"], "bounds noise dropped, other changes kept")
+        XCTAssertEqual(events.map(\.type.rawValue), ["title-changed"], "bounds noise dropped, other changes kept")
     }
 
     func testSameWindowIdDifferentPidIsDistinct() {
         let events = WindowDiff.diff(old: map([snap(7, pid: 1)]), new: map([snap(7, pid: 2)]))
-        XCTAssertEqual(events.map(\.type), ["window-closed", "window-opened"])
+        XCTAssertEqual(events.map(\.type.rawValue), ["window-closed", "window-opened"])
     }
 }
 
@@ -111,7 +111,7 @@ final class WireFormatTests: XCTestCase {
 
     func testWindowEventShape() throws {
         var evt = snap(42, pid: 7, title: "T", bounds: CGRect(x: 1, y: 2, width: 300, height: 400),
-                       display: 5, doc: "file:///tmp/a.txt").toEvent(type: "window-focused")
+                       display: 5, doc: "file:///tmp/a.txt").toEvent(type: .focused)
         var obj = try json(evt)
         XCTAssertEqual(Set(obj.keys), ["type", "windowId", "title", "ownerName", "bundleId", "pid",
                                        "bounds", "displayId", "documentPath"])

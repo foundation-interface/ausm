@@ -104,11 +104,11 @@ for a few minutes without editing any code.
 
 then listen with `ausm.onDetectorEvent`.
 
-building a native mac app? the screenshot and cursor sensors also come as swift packages, with no node needed:
+building a native mac app? the screenshot, cursor, clipboard, window and text input sensors also come as swift packages, with no node needed:
 
 ```swift
 .package(url: "https://github.com/foundation-interface/AUSM.git", from: "0.1.0")
-// products: ScreenshotMonitorKit, CursorMonitorKit
+// products: ScreenshotMonitorKit, CursorMonitorKit, ClipboardMonitorKit, WindowMonitorKit, TextInputMonitorKit
 ```
 
 your app needs **accessibility**, plus **screen recording** for screenshots and frames. everything stays on your mac. if you add a model provider (cerebras, vertex or any openai-compatible endpoint), only the focused window's frame and a summary of recent events are sent.

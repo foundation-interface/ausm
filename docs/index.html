@@ -71,6 +71,7 @@ h1 { margin: 0 auto; font-size: clamp(30px, 4.6vw, 48px); line-height: 1.08; let
 .cmd code.noprompt::before { content: ""; }
 .copy { all: unset; cursor: pointer; flex-shrink: 0; font-family: var(--font); font-size: 13px; color: var(--fg2); padding: 3px 10px; border-radius: 8px; }
 .copy:hover { background: var(--fill2); color: var(--fg); }
+.install-note { margin: 2px 0 0; font-size: 13.5px; color: var(--fg3); text-align: center; max-width: 46ch; align-self: center; text-wrap: balance; }
 .links { margin-top: 22px; display: flex; justify-content: center; flex-wrap: wrap; gap: 6px 22px; font-size: 15px; color: var(--fg2); }
 .links a:hover, .links button:hover { color: var(--fg); }
 .links button { all: unset; cursor: pointer; }
@@ -475,13 +476,14 @@ footer a:hover { color: var(--fg); }
     <section class="hero">
       <p class="eyebrow">MIT · macOS 13+</p>
       <h1>Your activity, as typed events.</h1>
-      <p class="sub">Sensors, memory and task detection for context-aware apps and agents.</p>
+      <p class="sub">Materials, memory and tasks from what you do on your Mac. For context-aware apps and agents.</p>
       <div class="install">
         <div class="seg" role="tablist" aria-label="Install">
           <button type="button" role="tab" aria-selected="true" data-install="npm">Node</button>
           <button type="button" role="tab" aria-selected="false" data-install="swift">Swift</button>
         </div>
         <div class="cmd"><code id="install-code">npm install ausm</code><button class="copy" type="button" data-copy="#install-code">Copy</button></div>
+        <p class="install-note" id="install-note">The full stack: sensors, materials, memory and tasks.</p>
       </div>
       <div class="links"><a href="#start">Quick start</a><a href="#docs/sensors">How it works</a><button type="button" data-view="agent-skill">For agents</button><a href="https://github.com/foundation-interface/AUSM" target="_blank" rel="noopener">GitHub</a></div>
     </section>
@@ -850,7 +852,7 @@ ausm.onDetectorEvent((e) =&gt; { if (e.eventType === 'stuck') offerHelp(e.summar
 <script type="text/plain" id="skill-src">
 ---
 name: ausm
-description: Build context-aware apps and agents on macOS with AUSM (Activity Understanding and Scaffolding Medium). Use when code imports `ausm`, `ausm/runtime`, `ausm/bridge/*`, `@ausm/*`, `ScreenshotMonitorKit` or `CursorMonitorKit`, or when the user wants an app to react to what they do on their Mac (text selection, typing, copy/paste, window focus, screenshots, cursor, screen frames, detected tasks).
+description: Build context-aware apps and agents on macOS with AUSM (Activity Understanding and Scaffolding Medium). Use when code imports `ausm`, `ausm/runtime`, `ausm/bridge/*`, `@ausm/*`, `ScreenshotMonitorKit`, `CursorMonitorKit`, `ClipboardMonitorKit`, `WindowMonitorKit` or `TextInputMonitorKit`, or when the user wants an app to react to what they do on their Mac (text selection, typing, copy/paste, window focus, screenshots, cursor, screen frames, detected tasks).
 ---
 
 # AUSM
@@ -870,10 +872,10 @@ Three layers, each optional on top of the one before:
 | --- | --- | --- |
 | Node or Electron main process | `createRuntime()` from `ausm/runtime` | The full stack. Helpers run as child processes. |
 | Electron renderer | `window.ausm` via the bridge preload | Events only. Memory queries are main-process only. |
-| Native Swift / SwiftUI app | `ScreenshotMonitorKit`, `CursorMonitorKit` (SwiftPM) | In-process, statically linked, no Node. Only these two sensors. |
+| Native Swift / SwiftUI app | `ScreenshotMonitorKit`, `CursorMonitorKit`, `ClipboardMonitorKit`, `WindowMonitorKit`, `TextInputMonitorKit` (SwiftPM) | In-process, statically linked, no Node. Only these five sensors (no text selection, screen stream, camera, materials or detectors). |
 
 Never mix paths for the same sensor in one app (for example the Swift kit and the Node
-screenshot helper at once). Both install event taps.
+screenshot helper at once). Both install event taps or AX observers and report every event twice.
 
 ## Node / Electron
 
@@ -998,9 +1000,12 @@ with memory search and a Claude agent over the user's materials. Get its URL fro
 ```swift
 // Package.swift
 .package(url: "https://github.com/foundation-interface/AUSM.git", from: "0.1.0"),
-// target dependencies
+// target dependencies: only the kits you use
 .product(name: "ScreenshotMonitorKit", package: "AUSM"),
 .product(name: "CursorMonitorKit", package: "AUSM"),
+.product(name: "ClipboardMonitorKit", package: "AUSM"),
+.product(name: "WindowMonitorKit", package: "AUSM"),
+.product(name: "TextInputMonitorKit", package: "AUSM"),
 ```
 
 ```swift
@@ -1016,10 +1021,38 @@ shots.onError = { problem, message in }   // accessibility_denied, screen_record
 shots.start()
 ```
 
-- `ScreenshotMonitor` callbacks arrive on a private serial queue. Hop to the main actor for UI.
-  `start()`/`stop()` are safe from any thread.
-- `CursorMonitor.onEvent(CursorEvent, CursorContext?)` arrives on the main thread. The context
-  carries the live `AXUIElement` under the cursor.
+```swift
+import WindowMonitorKit
+
+let windows = WindowMonitor()
+windows.onEvent = { event in              // private queue
+  switch event {
+  case .window(let e): Task { @MainActor in update(e.type, e.bundleId, e.bounds.cgRect) }
+  case .spaceChanged, .ready, .permissionsChanged: break
+  }
+}
+windows.onError = { problem, message in } // accessibility_denied, screen_recording_denied
+windows.start()
+```
+
+| Kit | Monitor | Events | Callbacks on |
+| --- | --- | --- | --- |
+| `ScreenshotMonitorKit` | `ScreenshotMonitor` | `onCapture(Capture)` (CGImage, rect, scale, mode), session callbacks | private queue |
+| `CursorMonitorKit` | `CursorMonitor` | `onEvent(CursorEvent, CursorContext?)`, context has the live `AXUIElement` | main thread |
+| `ClipboardMonitorKit` | `ClipboardMonitor` | `onEvent(ClipboardEvent)`: `contentType`, `content`, `contentPaths`, `concealed` | private queue |
+| `WindowMonitorKit` | `WindowMonitor` | `onEvent(WindowMonitorEvent)`: `.window(WindowEvent)` opened/closed/focused/unfocused/boundsChanged/titleChanged, `.spaceChanged`, `.ready`/`.permissionsChanged` | private queue |
+| `TextInputMonitorKit` | `TextInputMonitor` | `onEvent(TextInputMonitorEvent)`: `.textInput(TextInputEvent)` with `status` started/updated/finished and `text` | private queue |
+
+- Private-queue kits: hop to the main actor for UI. `start()`/`stop()` are idempotent and safe
+  from any thread, including inside a callback. `CursorMonitor` must be started and stopped on
+  the main thread.
+- `WindowMonitorKit` and `TextInputMonitorKit` need the main run loop running (any
+  NSApplication does). `TextInputMonitor.stop()` delivers a final `finished` for an edit in
+  progress.
+- Each kit has `onError(Problem, String)` (cursor: an `error` `CursorEvent`). Show the user what
+  to grant; the kits pick up a grant without a restart.
+- Privacy is built in: password fields and concealed/transient clipboard entries never produce
+  content. Text input is sensitive: turn it on only when the feature needs it.
 - The kits are compiled into the host binary. The **host app** is what the user grants
   Accessibility and Screen Recording to, and it must be signed with a stable identity, or macOS
   drops the grants on every rebuild.
@@ -1096,17 +1129,17 @@ retry in a loop.
   var SENSORS = [
     { n: "Text selection", on: 1, api: "Accessibility selected range + event tap", h: "text-selection", k: "textSelection", m: "onTextSelectionEvent", perm: "Accessibility", st: "START · UPDATE · END",
       j: { kind: "textSelection", selectedText: "Context is any information that can be used…", selectionMethod: "MOUSE", selectionStage: "END", detectionSource: "NATIVE", sourceElement: { application: "Safari" } } },
-    { n: "Text input", on: 0, api: "AXObserver, value changed", h: "text-input", k: "textInput", m: "subscribeToTextInputEvent", perm: "Accessibility", st: "STARTED · UPDATED · ENDED",
+    { n: "Text input", on: 0, kit: "TextInputMonitorKit", api: "AXObserver, value changed", h: "text-input", k: "textInput", m: "subscribeToTextInputEvent", perm: "Accessibility", st: "STARTED · UPDATED · ENDED",
       j: { kind: "textInput", text: "Read Dey 2001 tonight", status: "TEXT_INPUT_UPDATED", sourceElement: { type: "AXTextArea", application: "Notes" } } },
-    { n: "Clipboard", on: 1, api: "NSPasteboard changeCount", h: "clipboard-monitor", k: "copyPaste", m: "onCopyPasteEvent", perm: "None", st: "COPY · PASTE",
+    { n: "Clipboard", on: 1, kit: "ClipboardMonitorKit", api: "NSPasteboard changeCount", h: "clipboard-monitor", k: "copyPaste", m: "onCopyPasteEvent", perm: "None", st: "COPY · PASTE",
       j: { kind: "copyPaste", action: "COPY", contentType: "TEXT", content: "any information that can be used…", changeCount: 412 } },
-    { n: "Windows", on: 1, api: "AXObserver + CGWindowList", h: "viewport-manager", k: "windowState", m: "onApplicationSwitchEvent", perm: "Accessibility", st: "APPEAR · FOCUSED · UNFOCUSED · VANISHED · TITLE_CHANGED · BOUNDS_CHANGED",
+    { n: "Windows", on: 1, kit: "WindowMonitorKit", api: "AXObserver + CGWindowList", h: "viewport-manager", k: "windowState", m: "onApplicationSwitchEvent", perm: "Accessibility", st: "APPEAR · FOCUSED · UNFOCUSED · VANISHED · TITLE_CHANGED · BOUNDS_CHANGED",
       j: { kind: "windowState", state: "FOCUSED", application: "Safari", bundleId: "com.apple.Safari", windowId: 4182, title: "Understanding and Using Context", documentPath: "https://dl.acm.org/doi/…" } },
-    { n: "Spaces", on: 1, api: "NSWorkspace space change", h: "viewport-manager", k: "spaceChange", m: "onSpaceChangeEvent", perm: "None", st: "one event per switch",
+    { n: "Spaces", on: 1, kit: "WindowMonitorKit", api: "NSWorkspace space change", h: "viewport-manager", k: "spaceChange", m: "onSpaceChangeEvent", perm: "None", st: "one event per switch",
       j: { kind: "spaceChange", eventID: "e_9f1c", timestamp: 1730900000000, displayID: 1 } },
-    { n: "Screenshot", on: 1, api: "Event tap on ⌘⇧3/4/5 + ScreenCaptureKit", h: "screenshot-detector", k: "screenshot", m: "onScreenshotEvent", perm: "Screen Recording", st: "STARTED · UPDATED · FINISHED",
+    { n: "Screenshot", on: 1, kit: "ScreenshotMonitorKit", api: "Event tap on ⌘⇧3/4/5 + ScreenCaptureKit", h: "screenshot-detector", k: "screenshot", m: "onScreenshotEvent", perm: "Screen Recording", st: "STARTED · UPDATED · FINISHED",
       j: { kind: "screenshot", status: "SCREENSHOT_FINISHED", type: "PARTIAL_SCREEN", bounds: { x: 412, y: 220, width: 640, height: 300 }, imageWidth: 1280, imageHeight: 600 } },
-    { n: "Cursor++", on: 0, api: "Event tap + AX element at point", h: "cursor-plus-plus", k: "cursorPlusPlus", m: "onCursorPlusPlusEvent", perm: "Accessibility", st: "CLICK · DOUBLE_CLICK · RIGHT_CLICK · SCROLL · HOLD · DRAG · MOVE",
+    { n: "Cursor++", on: 0, kit: "CursorMonitorKit", api: "Event tap + AX element at point", h: "cursor-plus-plus", k: "cursorPlusPlus", m: "onCursorPlusPlusEvent", perm: "Accessibility", st: "CLICK · DOUBLE_CLICK · RIGHT_CLICK · SCROLL · HOLD · DRAG · MOVE",
       j: { kind: "cursorPlusPlus", action: "CLICK", x: 812, y: 404, application: "Safari", uiElementRole: "AXLink", uiElementLabel: "PDF", materialId: "mat_3a9f0c21b7d4" } },
     { n: "Screen stream", on: 0, api: "ScreenCaptureKit SCStream", h: "screen-stream", k: "frames", m: "feeds Materials", perm: "Screen Recording", st: "shared-memory frames",
       j: { enableScreenStreaming: true, note: "Frames are not events. They feed Materials and detectors." } },
@@ -1125,7 +1158,7 @@ retry in a loop.
       $("#sx-helper").innerHTML = "<code>" + esc(s.h) + "</code>";
       $("#sx-kind").innerHTML = "<code>" + esc(s.k) + "</code>";
       $("#sx-sub").innerHTML = "<code>" + esc(s.m) + "</code>";
-      $("#sx-meta").innerHTML = '<span>Permission <b>' + esc(s.perm) + '</b></span><span>Default <b>' + (s.on ? "On" : "Off") + '</b></span><span>' + esc(s.st) + "</span>";
+      $("#sx-meta").innerHTML = '<span>Permission <b>' + esc(s.perm) + '</b></span><span>Default <b>' + (s.on ? "On" : "Off") + '</b></span>' + (s.kit ? '<span>Swift <b>' + esc(s.kit) + '</b></span>' : '<span>Node only</span>') + '<span>' + esc(s.st) + "</span>";
       var pre = $("#sx-json"); pre.innerHTML = json(s.j); replay(pre, "swap");
       if (!calm) $$("#sx-flow .fnode").forEach(function (n, k) { n.style.setProperty("--d", (k * 90) + "ms"); replay(n, "lit"); });
     }
@@ -1508,7 +1541,7 @@ retry in a loop.
   var INSTALL = { npm: "npm install ausm", swift: '.package(url: "https://github.com/foundation-interface/AUSM.git", from: "0.1.0")' };
   $$("[data-install]").forEach(function (b) { b.addEventListener("click", function () {
     $$("[data-install]").forEach(function (o) { o.setAttribute("aria-selected", String(o === b)); });
-    var c = $("#install-code"); c.textContent = INSTALL[b.dataset.install]; c.classList.toggle("noprompt", b.dataset.install === "swift");
+    var c = $("#install-code"); c.textContent = INSTALL[b.dataset.install]; $("#install-note").textContent = b.dataset.install === "swift" ? "In-process kits for five sensors. Materials, memory and tasks need Node." : "The full stack: sensors, materials, memory and tasks."; c.classList.toggle("noprompt", b.dataset.install === "swift");
   }); });
   $$("[data-lang-tab]").forEach(function (b) { b.addEventListener("click", function () {
     $$("[data-lang-tab]").forEach(function (o) { o.setAttribute("aria-selected", String(o === b)); });

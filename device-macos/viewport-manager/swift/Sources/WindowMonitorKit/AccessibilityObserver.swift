@@ -4,8 +4,13 @@
 /// the CGWindowList snapshot.
 ///
 /// Threading: all methods are called on the monitor's serial queue. The observer's run-loop
-/// source is attached to the main run loop (which main.swift runs); callbacks hop back to
-/// the queue before touching any state.
+/// source is attached to the main run loop (common modes); callbacks hop back to the queue
+/// before touching any state.
+///
+/// Lifetime: the AX callback's refcon is a retained `CallbackBox` holding a weak reference, so a
+/// notification already in flight when the observer is released is dropped instead of touching
+/// freed memory. The box is released on the main queue, after any in-progress callback (which
+/// runs on the main run loop) has returned.
 
 import AppKit
 import ApplicationServices
@@ -17,6 +22,13 @@ protocol AccessibilityObserverDelegate: AnyObject {
 
 final class AccessibilityObserver {
     weak var delegate: AccessibilityObserverDelegate?
+
+    private final class CallbackBox {
+        weak var target: AccessibilityObserver?
+    }
+
+    private let box = CallbackBox()
+    private lazy var refcon: UnsafeMutableRawPointer = Unmanaged.passRetained(box).toOpaque()
 
     private let queue: DispatchQueue
     private var observer: AXObserver?
@@ -30,6 +42,13 @@ final class AccessibilityObserver {
 
     init(queue: DispatchQueue) {
         self.queue = queue
+        box.target = self
+    }
+
+    deinit {
+        terminate()
+        let unmanaged = Unmanaged<CallbackBox>.fromOpaque(refcon)
+        DispatchQueue.main.async { unmanaged.release() }
     }
 
     /// Start monitoring focus changes for the given PID (replacing any previous app).
@@ -49,7 +68,7 @@ final class AccessibilityObserver {
         pendingRetry?.cancel()
         pendingRetry = nil
         if let observer {
-            CFRunLoopRemoveSource(CFRunLoopGetMain(), AXObserverGetRunLoopSource(observer), .defaultMode)
+            CFRunLoopRemoveSource(CFRunLoopGetMain(), AXObserverGetRunLoopSource(observer), .commonModes)
         }
         observer = nil
         monitoredPID = 0
@@ -62,8 +81,9 @@ final class AccessibilityObserver {
 
         var obs: AXObserver?
         let result = AXObserverCreate(pid, { (_, element, _, refcon) in
-            guard let refcon else { return }
-            let monitor = Unmanaged<AccessibilityObserver>.fromOpaque(refcon).takeUnretainedValue()
+            guard let refcon,
+                  let monitor = Unmanaged<CallbackBox>.fromOpaque(refcon).takeUnretainedValue().target
+            else { return }
             let el = element  // retained by the closure
             monitor.queue.async {
                 monitor.handleFocusChange(el)
@@ -73,15 +93,14 @@ final class AccessibilityObserver {
         guard result == .success, let newObserver = obs else { return }
 
         let appElement = AXUIElementCreateApplication(pid)
-        // `self` lives for the whole process (owned by ViewportMonitor), so an unretained refcon is safe.
         let addResult = AXObserverAddNotification(
             newObserver, appElement,
             kAXFocusedUIElementChangedNotification as CFString,
-            Unmanaged.passUnretained(self).toOpaque()
+            refcon
         )
 
         if addResult == .success || addResult == .notificationAlreadyRegistered {
-            CFRunLoopAddSource(CFRunLoopGetMain(), AXObserverGetRunLoopSource(newObserver), .defaultMode)
+            CFRunLoopAddSource(CFRunLoopGetMain(), AXObserverGetRunLoopSource(newObserver), .commonModes)
             observer = newObserver
             monitoredPID = pid
             return
