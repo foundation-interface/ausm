@@ -19,7 +19,7 @@ Native hosts link the kits through the repo-root `Package.swift` (package `AUSM`
 
 ```swift
 // Package.swift of your app
-.package(url: "https://github.com/foundation-interface/AUSM.git", from: "0.1.0"),
+.package(url: "https://github.com/foundation-interface/ausm.git", from: "0.1.0"),
 // or, for a local checkout:
 .package(name: "AUSM", path: "../AUSM"),
 

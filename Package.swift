@@ -5,7 +5,7 @@ import PackageDescription
 //
 // SwiftPM only resolves a manifest at the repository root, so this file is what makes
 //
-//   .package(url: "https://github.com/foundation-interface/AUSM.git", from: "0.1.0")
+//   .package(url: "https://github.com/foundation-interface/ausm.git", from: "0.1.0")
 //   .product(name: "ScreenshotMonitorKit", package: "AUSM")
 //   .product(name: "CursorMonitorKit", package: "AUSM")
 //   .product(name: "ClipboardMonitorKit", package: "AUSM")

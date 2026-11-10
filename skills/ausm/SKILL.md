@@ -147,7 +147,7 @@ with memory search and a Claude agent over the user's materials. Get its URL fro
 
 ```swift
 // Package.swift
-.package(url: "https://github.com/foundation-interface/AUSM.git", from: "0.1.0"),
+.package(url: "https://github.com/foundation-interface/ausm.git", from: "0.1.0"),
 // target dependencies: only the kits you use
 .product(name: "ScreenshotMonitorKit", package: "AUSM"),
 .product(name: "CursorMonitorKit", package: "AUSM"),

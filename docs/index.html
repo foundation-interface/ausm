@@ -465,7 +465,7 @@ footer a:hover { color: var(--fg); }
       <button type="button" data-view="home" aria-current="page">Overview</button>
       <button type="button" data-view="docs">Docs</button>
       <button type="button" data-view="agent-skill">For agents</button>
-      <a href="https://github.com/foundation-interface/AUSM" target="_blank" rel="noopener">GitHub</a>
+      <a href="https://github.com/foundation-interface/ausm" target="_blank" rel="noopener">GitHub</a>
       <button type="button" class="theme" id="theme-btn" aria-label="Switch to dark theme"><svg class="sun" width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="3"/><path d="M8 1.5v1.5M8 13v1.5M1.5 8H3M13 8h1.5M3.4 3.4l1 1M11.6 11.6l1 1M3.4 12.6l1-1M11.6 4.4l1-1"/></svg><svg class="moon" width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M13 9.6A5.5 5.5 0 0 1 6.4 3a5.5 5.5 0 1 0 6.6 6.6z"/></svg></button>
     </nav>
   </div>
@@ -485,7 +485,7 @@ footer a:hover { color: var(--fg); }
         <div class="cmd"><code id="install-code">npm install ausm</code><button class="copy" type="button" data-copy="#install-code">Copy</button></div>
         <p class="install-note" id="install-note">The full stack: sensors, materials, memory and tasks.</p>
       </div>
-      <div class="links"><a href="#start">Quick start</a><a href="#docs/sensors">How it works</a><button type="button" data-view="agent-skill">For agents</button><a href="https://github.com/foundation-interface/AUSM" target="_blank" rel="noopener">GitHub</a></div>
+      <div class="links"><a href="#start">Quick start</a><a href="#docs/sensors">How it works</a><button type="button" data-view="agent-skill">For agents</button><a href="https://github.com/foundation-interface/ausm" target="_blank" rel="noopener">GitHub</a></div>
     </section>
 
     <section class="demo" aria-label="Live demo">
@@ -512,7 +512,7 @@ footer a:hover { color: var(--fg); }
                 <p>Context is any information that can be used to characterize the situation of an entity.</p>
               </div>
               <div class="sel" data-src="safari" data-pane="1" hidden>
-                <p class="muted">github.com/foundation-interface/AUSM</p>
+                <p class="muted">github.com/foundation-interface/ausm</p>
                 <h4>AUSM</h4>
                 <p>Sensors, materials and task detectors for context-aware apps on macOS.</p>
               </div>
@@ -572,7 +572,7 @@ shots.start()</pre>
       <p class="lead">One skill teaches Claude Code the API and the privacy rules.</p>
       <div class="agents">
         <div>
-          <div class="cmd"><code id="skill-cmd">npx skills add foundation-interface/AUSM</code><button class="copy" type="button" data-copy="#skill-cmd">Copy</button></div>
+          <div class="cmd"><code id="skill-cmd">npx skills add foundation-interface/ausm</code><button class="copy" type="button" data-copy="#skill-cmd">Copy</button></div>
           <p class="small">Or <button type="button" data-view="agent-skill">read the skill file</button> and paste it into AGENTS.md.</p>
         </div>
         <ul class="prompts">
@@ -590,7 +590,7 @@ shots.start()</pre>
       <h1>Teach your agent AUSM.</h1>
       <p class="sub">API, defaults and privacy rules in one skill file.</p>
       <div class="install">
-        <div class="cmd"><code id="skill-cmd2">npx skills add foundation-interface/AUSM</code><button class="copy" type="button" data-copy="#skill-cmd2">Copy</button></div>
+        <div class="cmd"><code id="skill-cmd2">npx skills add foundation-interface/ausm</code><button class="copy" type="button" data-copy="#skill-cmd2">Copy</button></div>
       </div>
     </section>
     <div class="file">
@@ -847,7 +847,7 @@ ausm.onDetectorEvent((e) =&gt; { if (e.eventType === 'stuck') offerHelp(e.summar
   </div>
 </div>
 
-<footer class="wrap"><span>AUSM · MIT</span><span>Runs locally. Nothing leaves the Mac unless you add a model provider.</span><a href="https://github.com/foundation-interface/AUSM" target="_blank" rel="noopener">GitHub</a></footer>
+<footer class="wrap"><span>AUSM · MIT</span><span>Runs locally. Nothing leaves the Mac unless you add a model provider.</span><a href="https://github.com/foundation-interface/ausm" target="_blank" rel="noopener">GitHub</a></footer>
 
 <script type="text/plain" id="skill-src">
 ---
@@ -999,7 +999,7 @@ with memory search and a Claude agent over the user's materials. Get its URL fro
 
 ```swift
 // Package.swift
-.package(url: "https://github.com/foundation-interface/AUSM.git", from: "0.1.0"),
+.package(url: "https://github.com/foundation-interface/ausm.git", from: "0.1.0"),
 // target dependencies: only the kits you use
 .product(name: "ScreenshotMonitorKit", package: "AUSM"),
 .product(name: "CursorMonitorKit", package: "AUSM"),
@@ -1538,7 +1538,7 @@ retry in a loop.
   $$("[data-copy]").forEach(function (b) { b.addEventListener("click", function () { copyText($(b.dataset.copy).textContent, b); }); });
 
   /* install + code tabs */
-  var INSTALL = { npm: "npm install ausm", swift: '.package(url: "https://github.com/foundation-interface/AUSM.git", from: "0.1.0")' };
+  var INSTALL = { npm: "npm install ausm", swift: '.package(url: "https://github.com/foundation-interface/ausm.git", from: "0.1.0")' };
   $$("[data-install]").forEach(function (b) { b.addEventListener("click", function () {
     $$("[data-install]").forEach(function (o) { o.setAttribute("aria-selected", String(o === b)); });
     var c = $("#install-code"); c.textContent = INSTALL[b.dataset.install]; $("#install-note").textContent = b.dataset.install === "swift" ? "In-process kits for five sensors. Materials, memory and tasks need Node." : "The full stack: sensors, materials, memory and tasks."; c.classList.toggle("noprompt", b.dataset.install === "swift");
@@ -1584,7 +1584,7 @@ retry in a loop.
   // Mirrors the memory store: one row per material, plus counts from frames, focus sessions and OCR.
   var MATS = [
     { materialId: "mat_e04b9a", title: "Understanding and Using Context", application: "Safari", bundleId: "com.apple.Safari", windowId: 4190, documentPath: "https://dl.acm.org/doi/10.1007/s007790170019", frames: 2, sessions: 2, focusMs: 4 * MIN + 12000, events: 0, ocr: "Context is any information that can be used to characterize…", firstSeen: NOW - 41 * MIN, lastSeen: NOW - 6 * MIN, task: "Reading paper: Understanding and Using Context" },
-    { materialId: "mat_a91c33", title: "foundation-interface/AUSM", application: "Safari", bundleId: "com.apple.Safari", windowId: 4190, documentPath: "https://github.com/foundation-interface/AUSM", frames: 1, sessions: 1, focusMs: 58000, events: 0, ocr: "Sensors, materials and task detectors…", firstSeen: NOW - 18 * MIN, lastSeen: NOW - 15 * MIN, task: "Browsing code: AUSM repo" },
+    { materialId: "mat_a91c33", title: "foundation-interface/ausm", application: "Safari", bundleId: "com.apple.Safari", windowId: 4190, documentPath: "https://github.com/foundation-interface/ausm", frames: 1, sessions: 1, focusMs: 58000, events: 0, ocr: "Sensors, materials and task detectors…", firstSeen: NOW - 18 * MIN, lastSeen: NOW - 15 * MIN, task: "Browsing code: AUSM repo" },
     { materialId: "mat_7c21e0", title: "draft.md", application: "Notes", bundleId: "com.apple.Notes", windowId: 4182, documentPath: "~/Notes/draft.md", frames: 3, sessions: 4, focusMs: 9 * MIN + 30000, events: 0, ocr: "Study plan, week 3. Most context switches…", firstSeen: NOW - 52 * MIN, lastSeen: NOW, task: "Writing notes: study plan" },
     { materialId: "mat_5d02f1", title: "#study-design", application: "Slack", bundleId: "com.tinyspeck.slackmacgap", windowId: 3977, documentPath: null, frames: 4, sessions: 3, focusMs: 6 * MIN + 5000, events: 0, ocr: "Can we log copy events per participant?", firstSeen: NOW - 95 * MIN, lastSeen: NOW - 12 * MIN, task: "" }
   ];
