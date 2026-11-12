@@ -50,7 +50,7 @@ function loadMonitor(): ViewportMonitorLike {
     return createViewportMonitor();
 }
 
-function mapEventTypeToWindowState(eventType: WindowEventType): WindowState {
+function mapEventTypeToWindowState(eventType: WindowEventType): WindowState | null {
     switch (eventType) {
         case 'window-opened':
             return WindowState.APPEAR;
@@ -64,10 +64,9 @@ function mapEventTypeToWindowState(eventType: WindowEventType): WindowState {
             return WindowState.BOUNDS_CHANGED;
         case 'title-changed':
             return WindowState.TITLE_CHANGED;
-        default: {
-            const _exhaustive: never = eventType;
-            return _exhaustive;
-        }
+        default:
+            // A newer helper may report types this client does not know yet.
+            return null;
     }
 }
 
@@ -76,11 +75,13 @@ function generateEventID(): string {
 }
 
 function toWindowStateEventData(event: WindowEvent): WindowStateEventData {
+    const state = mapEventTypeToWindowState(event.type);
+    if (state === null) throw new Error(`Unknown window event type: ${String(event.type)}`);
     return {
         eventID: generateEventID(),
         timestamp: event.timestamp,
         application: event.ownerName,
-        state: mapEventTypeToWindowState(event.type),
+        state,
         bounds: event.bounds,
         windowId: event.windowId,
         title: event.title,
@@ -130,7 +131,7 @@ export class ViewportClient extends EventEmitter {
         });
 
         this.monitor.on('error', (err: unknown) => {
-            this.emit('error', err as Error);
+            this.emitError(err as Error);
         });
 
         this.monitor.on('status', (status: unknown) => {
@@ -207,12 +208,21 @@ export class ViewportClient extends EventEmitter {
         }
     }
 
+    private emitError(err: Error): void {
+        // EventEmitter throws on an unhandled 'error'; never crash the host for a sensor failure.
+        if (this.listenerCount('error') > 0) {
+            this.emit('error', err);
+        } else {
+            console.warn('[ViewportClient]', err.message);
+        }
+    }
+
     private handleError(message: string, err: Error): void {
         const errorMsg = `${message}: ${err.message}`;
         if (this.debug) {
             console.error('[ViewportClient]', errorMsg);
         }
-        this.emit('error', new Error(errorMsg));
+        this.emitError(new Error(errorMsg));
     }
 
     private logDebug(message: string): void {

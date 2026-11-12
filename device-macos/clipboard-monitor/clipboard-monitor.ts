@@ -158,10 +158,11 @@ export class ClipboardMonitorService extends EventEmitter {
         const eventID = makeEventId();
         const contentType = this.parseContentType(data.contentType);
         const content = this.includeContent && typeof data.content === 'string' ? data.content : null;
-        const contentPaths =
-            this.includeContent && Array.isArray(data.contentPaths) && data.contentPaths.length
+        const paths =
+            this.includeContent && Array.isArray(data.contentPaths)
                 ? data.contentPaths.filter((p): p is string => typeof p === 'string')
-                : null;
+                : [];
+        const contentPaths = paths.length ? paths : null;
 
         const event = createCopyPasteEvent({
             eventID,

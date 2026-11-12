@@ -1,0 +1,9 @@
+{
+  // tsx honours compilerOptions.paths at runtime. The root tsconfig maps
+  // @ausm/detector-pipeline to its .d.ts for typechecking, which would load an
+  // empty module under tsx, so tests resolve the real package (dist) instead.
+  "extends": "../tsconfig.json",
+  "compilerOptions": {
+    "paths": {}
+  }
+}

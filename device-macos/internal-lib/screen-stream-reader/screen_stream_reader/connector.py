@@ -133,6 +133,8 @@ class DisplayInfo:
         otherwise falls back to width / scale_factor."""
         if self._logical_width > 0:
             return self._logical_width
+        if not self.scale_factor or self.scale_factor <= 0:
+            return int(self.width)
         return int(self.width / self.scale_factor)
     
     @property
@@ -142,6 +144,8 @@ class DisplayInfo:
         otherwise falls back to height / scale_factor."""
         if self._logical_height > 0:
             return self._logical_height
+        if not self.scale_factor or self.scale_factor <= 0:
+            return int(self.height)
         return int(self.height / self.scale_factor)
 
 
@@ -307,29 +311,31 @@ class NotificationClient:
 
     def _receive_loop(self, sock: socket.socket):
         """Background thread that receives notifications"""
-        buffer = ""
+        # Buffer raw bytes and decode whole lines: decoding each recv() chunk
+        # separately would drop a multi-byte UTF-8 character split across chunks.
+        buffer = b""
         while self._running:
             try:
                 data = sock.recv(4096)
                 if not data:
                     break
 
-                buffer += data.decode('utf-8', errors='ignore')
+                buffer += data
                 
-                # Guard against malformed data without newlines:
-                # if the buffer exceeds the cap, discard everything
-                # up to the last newline (preserving any partial
-                # message at the tail), or reset entirely.
+                # Guard against malformed data without newlines: if the
+                # buffer exceeds the cap, drop the oversized line (everything
+                # up to the first newline; complete lines after it are still
+                # processed), or reset entirely if there is no newline yet.
                 if len(buffer) > self._MAX_RECV_BUFFER:
-                    last_nl = buffer.rfind('\n')
-                    if last_nl >= 0:
-                        buffer = buffer[last_nl + 1:]
+                    first_nl = buffer.find(b'\n')
+                    if first_nl >= 0:
+                        buffer = buffer[first_nl + 1:]
                     else:
-                        buffer = ""
+                        buffer = b""
                 
-                while '\n' in buffer:
-                    line, buffer = buffer.split('\n', 1)
-                    line = line.strip()
+                while b'\n' in buffer:
+                    raw_line, buffer = buffer.split(b'\n', 1)
+                    line = raw_line.decode('utf-8', errors='replace').strip()
                     if not line:
                         continue
                     
@@ -345,8 +351,11 @@ class NotificationClient:
                         
                         # Handle init message specially
                         if msg_type == 'init':
-                            self._init_config = event_data.get('config', {})
-                            self._init_displays = event_data.get('displays', [])
+                            config = event_data.get('config')
+                            displays = event_data.get('displays')
+                            self._init_config = config if isinstance(config, dict) else {}
+                            self._init_displays = ([d for d in displays if isinstance(d, dict)]
+                                                   if isinstance(displays, list) else [])
                             self._init_received = True
                         elif msg_type == 'frame':
                             pass  # Already filtered above, but safety net
@@ -438,7 +447,8 @@ class CommandClient:
     def get_displays(self) -> List[dict]:
         """Get list of available displays"""
         response = self._send_command({"command": "displays"})
-        return response.get("displays", [])
+        displays = response.get("displays")
+        return displays if isinstance(displays, list) else []
     
     def start_capture(self, display_ids: Optional[List[str]] = None) -> bool:
         """Start capture (optionally for specific displays)"""
@@ -522,7 +532,8 @@ class CommandClient:
     def get_display_configs(self) -> Dict[str, dict]:
         """Get configuration for all displays"""
         response = self._send_command({"command": "getDisplayConfigs"})
-        return response.get("displayConfigs", {})
+        configs = response.get("displayConfigs")
+        return configs if isinstance(configs, dict) else {}
 
 
 class SharedMemoryReader:
@@ -1361,6 +1372,9 @@ class ScreenStreamConnector:
                 height = d.get('height', 0)
                 numeric_id = d.get('displayId', 0)  # Numeric ID from producer
                 scale_factor = d.get('scaleFactor', 1.0)  # Retina scale factor
+                if (not isinstance(scale_factor, (int, float)) or isinstance(scale_factor, bool)
+                        or not scale_factor > 0):
+                    scale_factor = 1.0
                 if display_id and width and height:
                     registry_displays.append(DisplayInfo(
                         display_id=display_id,

@@ -54,12 +54,15 @@ export function buildDetectorEvaluationPrompt(
         parts.push('');
     }
 
-    if (events.length > 0) {
+    // slice(-0) would return every event, so a non-positive cap means "none".
+    const shownEvents = maxEvents > 0 ? events.slice(-maxEvents) : [];
+    if (shownEvents.length > 0) {
         parts.push('---');
         parts.push('## Recent Activity (oldest → newest)');
         parts.push('');
-        for (const e of events.slice(-maxEvents)) {
-            const time = new Date(e.timestamp).toISOString();
+        for (const e of shownEvents) {
+            const date = new Date(e.timestamp);
+            const time = Number.isNaN(date.getTime()) ? 'unknown time' : date.toISOString();
             parts.push(`  ${formatActivityEvent(e, time)}`);
         }
         parts.push('');
@@ -154,13 +157,25 @@ export function parseDetectorResponse(raw: string): Array<{
     }
 
     if (cleaned.startsWith('```')) {
-        cleaned = cleaned.replace(/^```(?:json)?\s*\n?/, '').replace(/\n?```\s*$/, '');
+        cleaned = cleaned.replace(/^```(?:json)?\s*\n?/i, '').replace(/\n?```\s*$/, '');
     }
+
+    // Valid JSON that is not an object (null, a number, a string) carries no detections.
+    if (cleaned === 'null') return [];
 
     let parsed: Record<string, unknown> | null = tryParseJSON(cleaned);
 
     if (!parsed) {
         parsed = tryRepairTruncatedJSON(cleaned);
+    }
+
+    if (!parsed) {
+        // Models sometimes wrap the object in prose or a fence mid-message.
+        const firstBrace = cleaned.indexOf('{');
+        if (firstBrace > 0) {
+            const inner = cleaned.slice(firstBrace).replace(/\n?```[\s\S]*$/, '');
+            parsed = tryParseJSON(inner) ?? tryRepairTruncatedJSON(inner);
+        }
     }
 
     if (!parsed) {
@@ -178,7 +193,9 @@ export function parseDetectorResponse(raw: string): Array<{
         .filter((item: Record<string, unknown>) => item && typeof item.name === 'string')
         .map((item: Record<string, unknown>) => ({
             name: String(item.name ?? ''),
-            confidence: typeof item.confidence === 'number' ? item.confidence : 0.5,
+            confidence: typeof item.confidence === 'number' && Number.isFinite(item.confidence)
+                ? Math.min(1, Math.max(0, item.confidence))
+                : 0.5,
             summary: item.summary != null ? String(item.summary) : '',
             evidence: item.evidence != null ? String(item.evidence) : '',
             suggestedDetectors: Array.isArray(item.suggested_detectors)

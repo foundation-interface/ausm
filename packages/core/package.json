@@ -64,7 +64,9 @@
     "dev": "tsup --watch --no-dts",
     "clean": "rm -rf dist",
     "prepublishOnly": "npm run build",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "TSX_TSCONFIG_PATH=tests/tsconfig.json node --require ./src/memory/tests/fixtures/register-fake-transformers.cjs --import tsx --test 'tests/*.test.ts' 'src/**/tests/*.test.ts'",
+    "test:py": "python3 -m unittest discover -s src/memory/tests -p 'test_*.py'"
   },
   "peerDependencies": {
     "electron": ">=20.0.0"

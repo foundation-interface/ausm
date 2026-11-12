@@ -122,7 +122,8 @@
     "dev": "tsup --watch --no-dts",
     "clean": "rm -rf dist",
     "prepublishOnly": "npm run build",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "node --import tsx --test tests/*.test.ts"
   },
   "dependencies": {
     "@ausm/bridge": "0.1.0",

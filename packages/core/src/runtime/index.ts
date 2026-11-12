@@ -342,6 +342,21 @@ function isLogging(config: AUSMRuntimeConfig, module: LoggingModule): boolean {
     return config.debug ?? false;
 }
 
+/**
+ * Deliver an event to every subscriber. A throwing subscriber is logged and skipped: it must
+ * not starve the others (frequency monitor, detector pipeline, host callbacks) or propagate
+ * back into the sensor service that produced the event.
+ */
+function dispatchToCallbacks<T>(callbacks: EventCallback<T>[], event: T, label: string): void {
+    for (const cb of callbacks) {
+        try {
+            cb(event);
+        } catch (err) {
+            console.error(`[AUSM] ${label} callback threw:`, (err as Error)?.message ?? err);
+        }
+    }
+}
+
 // ============================================================================
 // Event Frequency Monitor
 // ============================================================================
@@ -438,7 +453,7 @@ class TextSelectionDetectorImpl implements Detector<TextSelectionEvent> {
 
     emit(event: TextSelectionEvent): void {
         if (this.running) {
-            this.callbacks.forEach(cb => cb(event));
+            dispatchToCallbacks(this.callbacks, event, 'TextSelection');
         }
     }
 
@@ -744,7 +759,7 @@ class ScreenshotDetectorImpl implements Detector<ScreenshotEvent> {
             if (isLogging(this.config, 'screenshot')) {
                 console.log(`[AUSM] ScreenshotEvent: status=${event.status} type=${event.type} bounds=${event.bounds ? 'yes' : 'no'}`);
             }
-            this.callbacks.forEach(cb => cb(event));
+            dispatchToCallbacks(this.callbacks, event, 'Screenshot');
         }
     }
 
@@ -815,7 +830,7 @@ class ClipboardMonitorImpl implements Detector<CopyPasteEvent> {
             if (isLogging(this.config, 'clipboardMonitor')) {
                 console.log(`[AUSM] CopyPasteEvent: action=${event.action} contentLength=${event.content?.length ?? 0}`);
             }
-            this.callbacks.forEach(cb => cb(event));
+            dispatchToCallbacks(this.callbacks, event, 'CopyPaste');
         }
     }
 
@@ -904,7 +919,7 @@ class ApplicationStateDetectorImpl implements Detector<WindowStateEvent> {
                 const boundsStr = b ? `${b.x},${b.y} ${b.width}x${b.height}` : 'null';
                 console.log(`[AUSM] WindowStateEvent: state=${event.state} app="${event.application ?? ''}" title="${event.title ?? ''}" bounds=[${boundsStr}]`);
             }
-            this.callbacks.forEach(cb => cb(event));
+            dispatchToCallbacks(this.callbacks, event, 'WindowState');
         }
     }
 
@@ -913,7 +928,7 @@ class ApplicationStateDetectorImpl implements Detector<WindowStateEvent> {
             if (isLogging(this.config, 'windowState')) {
                 console.log('[AUSM] SpaceChangeEvent: active space changed');
             }
-            this.spaceChangeCallbacks.forEach(cb => cb(event));
+            dispatchToCallbacks(this.spaceChangeCallbacks, event, 'SpaceChange');
         }
     }
 
@@ -992,9 +1007,10 @@ class TextInputDetectorImpl implements Detector<TextInputEvent> {
     emit(event: TextInputEvent): void {
         if (this.running) {
             if (isLogging(this.config, 'textInput')) {
-                console.log(`[AUSM] TextInputEvent: status=${event.status} text="${event.text ?? ''}"`);
+                // Never log typed text, only its length.
+                console.log(`[AUSM] TextInputEvent: status=${event.status} text=<${event.text?.length ?? 0} chars>`);
             }
-            this.callbacks.forEach(cb => cb(event));
+            dispatchToCallbacks(this.callbacks, event, 'TextInput');
         }
     }
 
@@ -1098,7 +1114,7 @@ class CursorPlusPlusDetectorImpl implements Detector<CursorPlusPlusEvent> {
 
     emit(event: CursorPlusPlusEvent): void {
         if (this.running) {
-            this.callbacks.forEach(cb => cb(event));
+            dispatchToCallbacks(this.callbacks, event, 'CursorPlusPlus');
         }
     }
 
@@ -1194,7 +1210,7 @@ class MaterialDetectorImpl implements Detector<MaterialEvent> {
 
     emit(event: MaterialEvent): void {
         if (!this.running) return;
-        this.callbacks.forEach(cb => cb(event));
+        dispatchToCallbacks(this.callbacks, event, 'Material');
     }
 }
 
@@ -1310,7 +1326,7 @@ class MaterialManagerImpl {
 
             client.on('material-frame', (data) => {
                 // Forward to legacy untyped callbacks
-                this.materialCallbacks.forEach(cb => cb(data));
+                dispatchToCallbacks(this.materialCallbacks, data, 'Material');
 
                 // Persist frame to memory
                 if (this.memoryClient) {
@@ -1689,6 +1705,10 @@ export class AUSMRuntime {
     private taskCallbacks: EventCallback<TaskEvent>[] = [];
     private frequencyMonitor: EventFrequencyMonitor | null = null;
     private config: AUSMRuntimeConfig;
+    /** In-flight or completed initialize(); concurrent/repeat calls share it. */
+    private initPromise: Promise<void> | null = null;
+    /** Bumped by shutdown() so an initialize() still in progress stops starting things. */
+    private lifecycleGeneration = 0;
 
     constructor(config: AUSMRuntimeConfig = {}) {
         this.config = config;
@@ -1723,8 +1743,25 @@ export class AUSMRuntime {
         }
     }
 
-    /** Initialize and start all event sources */
-    async initialize(): Promise<void> {
+    /** Initialize and start all event sources. Repeat or concurrent calls share one run. */
+    initialize(): Promise<void> {
+        if (!this.initPromise) {
+            const run = this.doInitialize();
+            this.initPromise = run;
+            run.catch(() => {
+                if (this.initPromise === run) this.initPromise = null;
+            });
+        }
+        return this.initPromise;
+    }
+
+    private async doInitialize(): Promise<void> {
+        const generation = this.lifecycleGeneration;
+        const shutDownMeanwhile = (): boolean => {
+            if (generation === this.lifecycleGeneration) return false;
+            console.warn('[AUSM] Shutdown requested during initialize — remaining startup skipped');
+            return true;
+        };
         const startTime = Date.now();
         const checkpoint = (name: string) => {
             const elapsed = Date.now() - startTime;
@@ -1740,6 +1777,10 @@ export class AUSMRuntime {
         } catch (err) {
             console.warn('[AUSM] Screen streaming failed to start:', (err as Error).message);
         }
+        if (shutDownMeanwhile()) {
+            this.screenStreamingManager.stop().catch(() => {});
+            return;
+        }
         checkpoint('Screen streaming started');
 
         // Step 1b: Start camera streaming (optional, default off)
@@ -1747,6 +1788,10 @@ export class AUSMRuntime {
             await this.cameraStreamingManager.start();
         } catch (err) {
             console.warn('[AUSM] Camera streaming failed to start:', (err as Error).message);
+        }
+        if (shutDownMeanwhile()) {
+            this.cameraStreamingManager.stop().catch(() => {});
+            return;
         }
         checkpoint('Camera streaming started');
 
@@ -1781,8 +1826,13 @@ export class AUSMRuntime {
                 ocrEnabled: memConfig.ocrEnabled ?? false,
                 pythonPath: ocrPythonPath,
                 ocrMaxFramesPerRun: memConfig.ocrMaxFramesPerRun,
+                frozen: memConfig.frozen ?? false,
             }) as MemoryClient;
             await mc.start();
+            if (shutDownMeanwhile()) {
+                mc.stop().catch(() => {});
+                return;
+            }
             this.memoryClient = mc;
             this.materialManagerImpl.setMemoryClient(mc);
 
@@ -1869,7 +1919,13 @@ export class AUSMRuntime {
                 materialChat: this.config.materialChat,
             });
             try {
-                await this.httpHost.start();
+                const host = this.httpHost;
+                await host.start();
+                if (shutDownMeanwhile()) {
+                    host.stop().catch(() => {});
+                    if (this.httpHost === host) this.httpHost = null;
+                    return;
+                }
             } catch (err) {
                 this.httpHost = null;
                 const message = `[AUSM] HTTP host failed to start: ${(err as Error).message}`;
@@ -1886,6 +1942,11 @@ export class AUSMRuntime {
         try {
             this.materialDetector.start();
             await this.materialManagerImpl.start();
+            if (shutDownMeanwhile()) {
+                this.materialManagerImpl.stop().catch(() => {});
+                this.materialDetector.stop();
+                return;
+            }
 
             // Wire window state events into the material manager
             if (this.materialManagerImpl.isRunning()) {
@@ -1912,6 +1973,7 @@ export class AUSMRuntime {
             }
         }
         checkpoint('Detectors loaded');
+        if (shutDownMeanwhile()) return;
 
         await this.startDetectorPipeline();
         checkpoint('Detector pipeline started');
@@ -1922,17 +1984,20 @@ export class AUSMRuntime {
 
     private async startDetectorPipeline(): Promise<void> {
         const dpConfig = this.config.detectorPipeline ?? {};
+        // Empty or whitespace-only values (config or env) count as unset.
+        const pick = (value: string | undefined): string | undefined => value?.trim() || undefined;
+        const env = (name: string): string | undefined => pick(process.env[name]);
         const projectId =
-            dpConfig.projectId
-            || process.env.TASK_DETECTOR_PROJECT_ID
-            || process.env.AUSM_DETECTOR_PROJECT_ID
-            || '';
-        const apiKey = dpConfig.apiKey || process.env.CEREBRAS_API_KEY || '';
-        const requestedProvider = (
-            dpConfig.provider
-            || process.env.TASK_DETECTOR_PROVIDER
-            || ''
-        ).toLowerCase();
+            pick(dpConfig.projectId)
+            ?? env('TASK_DETECTOR_PROJECT_ID')
+            ?? env('AUSM_DETECTOR_PROJECT_ID')
+            ?? '';
+        const apiKey = pick(dpConfig.apiKey) ?? env('CEREBRAS_API_KEY') ?? '';
+        const rawProvider = pick(dpConfig.provider) ?? env('TASK_DETECTOR_PROVIDER');
+        const requestedProvider = (rawProvider ?? '').toLowerCase();
+        if (rawProvider && requestedProvider !== 'cerebras' && requestedProvider !== 'vertex') {
+            console.warn(`[AUSM] Unknown detector pipeline provider "${rawProvider}" (expected "vertex" or "cerebras") — inferring from credentials`);
+        }
         const provider: 'vertex' | 'cerebras' =
             requestedProvider === 'cerebras' || requestedProvider === 'vertex'
                 ? requestedProvider
@@ -1951,14 +2016,14 @@ export class AUSMRuntime {
         try {
             // eslint-disable-next-line @typescript-eslint/no-require-imports
             const { createDetectorPipelineClient } = require('@ausm/core/clients');
-            const model = dpConfig.model ?? process.env.TASK_DETECTOR_MODEL;
+            const model = pick(dpConfig.model) ?? env('TASK_DETECTOR_MODEL');
             console.log(`[AUSM] Detector pipeline: ${provider} / ${model || (provider === 'cerebras' ? 'gemma-4-31b' : 'gemini-2.0-flash')}`);
             const dpClient: DetectorPipelineClient = createDetectorPipelineClient({
                 provider,
                 projectId,
                 apiKey,
-                apiBaseUrl: dpConfig.apiBaseUrl || process.env.CEREBRAS_BASE_URL,
-                location: dpConfig.location ?? process.env.TASK_DETECTOR_LOCATION,
+                apiBaseUrl: pick(dpConfig.apiBaseUrl) ?? env('CEREBRAS_BASE_URL'),
+                location: pick(dpConfig.location) ?? env('TASK_DETECTOR_LOCATION'),
                 model,
                 debug: isLogging(this.config, 'detectorPipeline'),
             });
@@ -1993,7 +2058,7 @@ export class AUSMRuntime {
                     suggestedDetectors: result.suggestedDetectors,
                     modelLatencyMs: result.modelLatencyMs ?? null,
                 });
-                this.detectorCallbacks.forEach((cb) => cb(detectorEvent));
+                dispatchToCallbacks(this.detectorCallbacks, detectorEvent, 'Detector');
 
                 if (result.eventType === 'task' || result.detectorName === 'rapid-task') {
                     const observation = observationFromDetectorResult(result);
@@ -2006,7 +2071,7 @@ export class AUSMRuntime {
                     }
                     for (const taskEvent of taskEvents) {
                         this.frequencyMonitor?.record('task');
-                        this.taskCallbacks.forEach((cb) => cb(taskEvent));
+                        dispatchToCallbacks(this.taskCallbacks, taskEvent, 'Task');
                         if (dpLog) {
                             console.log(
                                 `[AUSM] TaskEvent: ${taskEvent.status} "${taskEvent.taskLabel}"` +
@@ -2179,7 +2244,13 @@ export class AUSMRuntime {
                 });
             });
 
-            dpClient.start();
+            if (!dpClient.start()) {
+                // The service already reported why (missing/invalid credentials) via 'error'.
+                console.warn('[AUSM] Detector pipeline failed to start — detector and task events are disabled');
+                dpClient.cleanup();
+                this.detectorPipelineClient = null;
+                return;
+            }
 
             console.log(
                 `[AUSM] Detector pipeline started (rapid-task) — ignoring startup window census for ${DETECTOR_STARTUP_IGNORE_MS}ms`,
@@ -2219,6 +2290,8 @@ export class AUSMRuntime {
     /** Stop all event sources */
     shutdown(): void {
         console.log('[AUSM] Shutting down...');
+        this.lifecycleGeneration++;
+        this.initPromise = null;
         this.frequencyMonitor?.stop();
         // Material manager stop is async (process shutdown) — fire-and-forget.
         this.materialManagerImpl.stop().catch(() => {});
@@ -2598,13 +2671,13 @@ export class AUSMRuntime {
     emitDetectorEvent(data: DetectorEventData): void {
         this.frequencyMonitor?.record('detector');
         const event = createDetectorEvent(data);
-        this.detectorCallbacks.forEach((cb) => cb(event));
+        dispatchToCallbacks(this.detectorCallbacks, event, 'Detector');
     }
 
     emitTaskEvent(data: TaskEventData): void {
         this.frequencyMonitor?.record('task');
         const event = createTaskEvent(data);
-        this.taskCallbacks.forEach((cb) => cb(event));
+        dispatchToCallbacks(this.taskCallbacks, event, 'Task');
     }
 
     // ========================================================================

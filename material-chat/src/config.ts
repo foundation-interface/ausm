@@ -9,6 +9,16 @@ function int(name: string, fallback: number): number {
   return Number.isFinite(n) ? n : fallback;
 }
 
+/** Env string with "" treated as unset (path.resolve("") would silently mean the cwd). */
+function str(name: string, fallback: string): string {
+  return process.env[name] || fallback;
+}
+
+function port(name: string, fallback: number): number {
+  const n = int(name, fallback);
+  return n >= 0 && n <= 65535 ? n : fallback;
+}
+
 const defaultDataDir = path.join(
   os.homedir(),
   "Library/Application Support/activity-visualizer/material-chat",
@@ -24,24 +34,24 @@ export const config = {
   braveKey: process.env.BRAVE_API_KEY?.trim() ?? "",
 
   dbPath: (() => {
-    const raw = process.env.AUSM_DB ?? defaultDbPath;
+    const raw = str("AUSM_DB", defaultDbPath);
     return raw === ":memory:" ? raw : path.resolve(raw);
   })(),
-  port: int("AUSM_PORT", 8788),
+  port: port("AUSM_PORT", 8788),
 
-  dataDir: path.resolve(process.env.MATERIAL_CHAT_DATA_DIR ?? defaultDataDir),
+  dataDir: path.resolve(str("MATERIAL_CHAT_DATA_DIR", defaultDataDir)),
 
   get sessionsPath(): string {
     return path.resolve(
-      process.env.SESSIONS_PATH ?? path.join(this.dataDir, "sessions.json"),
+      str("SESSIONS_PATH", path.join(this.dataDir, "sessions.json")),
     );
   },
   get preferencesPath(): string {
     return path.join(this.dataDir, "preferences.md");
   },
 
-  materialUrlScheme: process.env.MATERIAL_URL_SCHEME ?? "material://",
-  ausmUrl: process.env.AUSM_URL ?? "http://127.0.0.1:8788",
+  materialUrlScheme: str("MATERIAL_URL_SCHEME", "material://"),
+  ausmUrl: str("AUSM_URL", "http://127.0.0.1:8788"),
 
   userName: process.env.USER_NAME ?? "",
   userAliases: (process.env.USER_ALIASES ?? "")
@@ -52,8 +62,8 @@ export const config = {
   timezone: process.env.TIMEZONE ?? "",
   defaultPipeline: 1,
 
-  plannerModel: process.env.PLANNER_MODEL ?? "claude-haiku-4-5-20251001",
-  synthModel: process.env.SYNTH_MODEL ?? "claude-sonnet-4-6",
+  plannerModel: str("PLANNER_MODEL", "claude-haiku-4-5-20251001"),
+  synthModel: str("SYNTH_MODEL", "claude-sonnet-4-6"),
 
   personalTopK: int("PERSONAL_TOP_K", 5),
   webTopK: int("WEB_TOP_K", 5),

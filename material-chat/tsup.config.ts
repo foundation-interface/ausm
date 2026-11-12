@@ -4,6 +4,8 @@ export default defineConfig([
   {
     entry: ["src/index.ts"],
     format: ["cjs", "esm"],
+    // The ESM build needs __dirname to locate prompts/ (engine/prompts.ts).
+    shims: true,
     dts: true,
     clean: true,
     sourcemap: true,

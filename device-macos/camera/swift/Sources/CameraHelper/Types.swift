@@ -116,7 +116,14 @@ enum ConfigValue {
     static let targetHeightRange: ClosedRange<Int> = 2...4320
     static let frameCountRange: ClosedRange<Int> = 2...32
 
+    /// JSON booleans arrive as NSNumber too; they are not numbers here.
+    private static func isBool(_ value: Any?) -> Bool {
+        guard let n = value as? NSNumber else { return false }
+        return CFGetTypeID(n) == CFBooleanGetTypeID()
+    }
+
     static func int(_ value: Any?) -> Int? {
+        if isBool(value) { return nil }
         let d: Double
         switch value {
         case let v as Int: return v
@@ -134,6 +141,7 @@ enum ConfigValue {
     }
 
     static func jpegQuality(_ value: Any?) -> Double {
+        if isBool(value) { return 0.7 }
         let q: Double
         switch value {
         case let v as Double: q = v

@@ -229,7 +229,14 @@ export class HelperClient extends EventEmitter {
         if (settled) return;
         // Keep a short tail so a marker split across chunks is still detected.
         startupTail = (startupTail + msg).slice(-4096);
-        if (startupTail.includes(READY_MARKER)) succeed();
+        if (!startupTail.includes(READY_MARKER)) return;
+        if (this.stopping) {
+          // stop() was called while starting up: do not come up half-alive.
+          fail(new Error("Helper stopped during startup"));
+          try { child.kill("SIGKILL"); } catch { /* already gone */ }
+          return;
+        }
+        succeed();
       };
       child.stdout?.on("data", onOutput);
       child.stderr?.on("data", onOutput);
@@ -274,13 +281,10 @@ export class HelperClient extends EventEmitter {
         sock.on("data", (data: string) => {
           buffer += data;
 
-          if (buffer.length > MAX_BUFFER) {
-            const lastNl = buffer.lastIndexOf("\n");
-            buffer = lastNl >= 0 ? buffer.slice(lastNl + 1) : "";
-          }
-
           const lines = buffer.split("\n");
           buffer = lines.pop() || "";
+          // Cap only the unterminated tail: complete lines in the same chunk are kept.
+          if (buffer.length > MAX_BUFFER) buffer = "";
 
           for (const line of lines) {
             if (!line.trim()) continue;
@@ -370,23 +374,25 @@ export class HelperClient extends EventEmitter {
     }
 
     for (const sockPath of [this.socketPath, this.notifySocketPath]) {
-      if (fs.existsSync(sockPath)) {
-        try {
+      try {
+        // Only ever remove a leftover *socket*: never a regular file a caller pointed us at.
+        if (fs.lstatSync(sockPath).isSocket()) {
           fs.unlinkSync(sockPath);
           if (this.debug) console.log(`[CameraHelperClient] Removed stale socket: ${sockPath}`);
-        } catch {
-          // Ignore
         }
+      } catch {
+        // Missing or not removable
       }
     }
   }
 
   async stop(): Promise<void> {
     const child = this.helperProcess;
+    this.stopping = true;
     if (!child) {
+      this.ready = false;
       return;
     }
-    this.stopping = true;
 
     if (this.notifySocket) {
       this.notifySocket.destroy();

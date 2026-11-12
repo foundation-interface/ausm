@@ -270,6 +270,11 @@ export class HelperClient extends EventEmitter {
           for (const line of lines) {
             if (this.debug && line.trim()) console.log("[Helper]", line.trim());
             if (!this.ready && line.includes(READY_MARKER)) {
+              if (this.stopping) {
+                // stop() was called while starting up: do not come up half-alive.
+                finish(new Error("Helper stopped during startup"));
+                return;
+              }
               this.ready = true;
               this.connectNotifications();
               finish();
@@ -333,7 +338,12 @@ export class HelperClient extends EventEmitter {
             this.log(`Invalid notification: ${line.slice(0, 200)}`);
             continue;
           }
-          this.handleNotification(event);
+          try {
+            this.handleNotification(event);
+          } catch (err) {
+            // A throwing listener must not escape the socket handler (uncaught in the host).
+            this.log(`Notification listener threw: ${(err as Error).message}`);
+          }
         }
       });
 

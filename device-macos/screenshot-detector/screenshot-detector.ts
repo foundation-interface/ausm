@@ -37,6 +37,11 @@ export interface ScreenshotDetectorConfig {
     autoRestart?: boolean;
     /** Override the helper executable path (default: bundled build/screenshot-helper). */
     helperPath?: string;
+    /**
+     * Only report sessions started by the system screenshot hotkeys (Cmd+Shift+3/4/5); ignore
+     * other programs running the `screencapture` CLI (default: false).
+     */
+    hotkeyOnly?: boolean;
 }
 
 export interface ScreenshotDetectorEvents {
@@ -64,6 +69,8 @@ interface NativeScreenshotEvent {
     mode?: string;
     /** file | clipboard | unknown */
     destination?: string;
+    /** hotkey | cli | unknown: who launched screencapture */
+    origin?: string;
     /** screencapture_ended without an image: Esc, timeout, superseded, or capture failure */
     cancelled?: boolean;
     /** screenshot_capture_failed */
@@ -110,6 +117,7 @@ export class ScreenshotDetectorService extends EventEmitter {
     private debug = false;
     private autoRestart: boolean;
     private helperPath: string | undefined;
+    private hotkeyOnly: boolean;
     /** A screencapture session is open (between started and ended). */
     private sessionOpen = false;
     /** The open session was synthesized from screencaptureui_started. */
@@ -120,6 +128,7 @@ export class ScreenshotDetectorService extends EventEmitter {
         this.debug = config.debug ?? false;
         this.autoRestart = config.autoRestart ?? true;
         this.helperPath = config.helperPath;
+        this.hotkeyOnly = config.hotkeyOnly ?? false;
     }
 
     // Type-safe EventEmitter overrides
@@ -151,7 +160,7 @@ export class ScreenshotDetectorService extends EventEmitter {
         this.uiSessionOpen = false;
         this.helper = new HelperProcess({
             binary: this.helperPath ?? helperBinary(),
-            args: this.debug ? ['--debug'] : [],
+            args: [...(this.debug ? ['--debug'] : []), ...(this.hotkeyOnly ? ['--hotkey-only'] : [])],
             name: 'ScreenshotHelper',
             autoRestart: this.autoRestart,
             onMessage: (msg) => this.handleNativeEvent(msg as NativeScreenshotEvent),

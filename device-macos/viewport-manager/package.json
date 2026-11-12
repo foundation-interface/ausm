@@ -35,6 +35,7 @@
     "rebuild": "npm run clean && npm run build",
     "prepublishOnly": "npm run build",
     "typecheck": "tsc --noEmit",
+    "test": "node --import tsx --test tests/*.test.ts",
     "test:swift": "cd swift && swift test"
   },
   "devDependencies": {

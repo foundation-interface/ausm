@@ -145,6 +145,11 @@ function handleConfig(msg: Record<string, unknown>): void {
     const dbPath = (msg.dbPath as string) ?? ':memory:';
     const maxFramesPerMaterial = (msg.maxFramesPerMaterial as number) ?? 200;
 
+    // Start frozen when asked, before the store opens and the embedding
+    // backfill starts — a later 'freeze' message would leave a window in
+    // which writes still land.
+    if (msg.frozen === true) frozen = true;
+
     ocrEnabled = (msg.ocrEnabled as boolean) ?? false;
     ocrPythonPath = (msg.pythonPath as string) ?? 'python3';
     ocrMaxFramesPerRun = (msg.ocrMaxFramesPerRun as number) ?? 40;
@@ -265,7 +270,8 @@ function handleGetMaterialFrames(msg: Record<string, unknown>): void {
     }
     try {
         const limit = (msg.limit as number) ?? 10;
-        const frames = store.getFrames(materialId).slice(-limit);
+        // slice(-0) would return every frame
+        const frames = limit > 0 ? store.getFrames(materialId).slice(-limit) : [];
         const serialized = frames.map((f) => ({
             frameId: f.frameId,
             materialId: f.materialId,
@@ -572,6 +578,11 @@ async function handleProcessMaterialOcr(msg: Record<string, unknown>): Promise<v
 
         const text = deduper.text();
         const addedLines = deduper.lineCount - linesBefore;
+        // Frozen (or shut down) while OCR was running: writes must be no-ops.
+        if (frozen || !store) {
+            send({ type: 'response', requestId, ok: true, materialId, skipped: 'frozen' });
+            return;
+        }
         store.upsertMaterialOcr({
             materialId,
             text,
@@ -634,7 +645,7 @@ async function backfillEmbeddings(): Promise<void> {
 
     let done = 0;
     for (const materialId of missing) {
-        if (!store) break;
+        if (!store || frozen) break;
         try {
             await embedAndStoreMaterial(materialId);
             done++;
@@ -652,6 +663,9 @@ async function embedAndStoreMaterial(materialId: string): Promise<void> {
 
     const text = MemoryStore.buildEmbeddingText(material);
     const vec = await embed(text);
+    // Re-check after the await: memory may have been frozen or shut down
+    // while the embedding was computed.
+    if (frozen || !store) return;
     store.saveMaterialEmbedding(materialId, vec);
 }
 

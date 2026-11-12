@@ -29,6 +29,8 @@ export interface MemoryClientOptions {
     pythonPath?: string;
     /** Max frames OCRed per process-material-ocr run. Default: 40 */
     ocrMaxFramesPerRun?: number;
+    /** Start the service with writes frozen (no write window during startup). Default: false */
+    frozen?: boolean;
 }
 
 function resolveDefaultServicePath(): string {
@@ -153,9 +155,14 @@ export class MemoryClient {
             }
         });
 
-        this.process.on('exit', (code) => {
+        const child = this.process;
+        child.on('exit', (code) => {
             if (this.readyReject && code !== 0) {
                 this.readyReject(new Error(`Memory service exited with code ${code}`));
+            }
+            // Fail in-flight reads now instead of after their (30–120 s) timeout.
+            if (this.process === child || this.process === null) {
+                this.rejectAllPending(new Error(`Memory service exited (code ${code})`));
             }
         });
 
@@ -170,6 +177,7 @@ export class MemoryClient {
             ocrEnabled: this.options.ocrEnabled ?? false,
             pythonPath: this.options.pythonPath,
             ocrMaxFramesPerRun: this.options.ocrMaxFramesPerRun,
+            frozen: this.options.frozen ?? false,
         });
 
         const timeout = setTimeout(() => {
@@ -206,6 +214,14 @@ export class MemoryClient {
             });
             proc.stdin?.end();
         });
+    }
+
+    private rejectAllPending(err: Error): void {
+        for (const [, p] of this.pendingRequests) {
+            clearTimeout(p.timeout);
+            p.reject(err);
+        }
+        this.pendingRequests.clear();
     }
 
     private send(msg: Record<string, unknown>): void {
@@ -265,6 +281,10 @@ export class MemoryClient {
 
     private request<T = unknown>(type: string, params: Record<string, unknown> = {}, timeoutMs = 30000): Promise<T> {
         return new Promise((resolve, reject) => {
+            if (!this.process?.stdin?.writable) {
+                reject(new Error(`Memory service not running (${type})`));
+                return;
+            }
             const requestId = `req_${++this.requestIdCounter}_${Date.now()}`;
             const timeout = setTimeout(() => {
                 if (this.pendingRequests.delete(requestId)) {

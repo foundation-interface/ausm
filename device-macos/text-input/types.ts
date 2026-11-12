@@ -68,6 +68,8 @@ export interface TextInputMonitorConfig {
     debug?: boolean;
     /** Restart the helper with exponential backoff if it crashes (default: true) */
     autoRestart?: boolean;
+    /** Override the helper executable path (default: the bundled helper). */
+    helperPath?: string;
 }
 
 /** Accessibility permission state reported by the helper at startup and on every change. */

@@ -28,7 +28,8 @@
     "clean": "rm -rf dist",
     "rebuild": "npm run clean && npm run build",
     "prepublishOnly": "npm run build",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "node --import tsx --test tests/*.test.ts"
   },
   "dependencies": {
     "@google/genai": "^1.0.0",

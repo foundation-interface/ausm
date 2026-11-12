@@ -45,6 +45,12 @@ public final class ScreenshotMonitor: @unchecked Sendable {
         case file, clipboard, unknown
     }
 
+    /// Who started a session: the system screenshot hotkeys (Cmd+Shift+3/4/5), another program
+    /// running the `screencapture` CLI (e.g. `screencapture -x`), or unknown (argv unreadable).
+    public enum Origin: String {
+        case hotkey, cli, unknown
+    }
+
     /// Permission / health problems reported through `onError` and `{"type":"error","code":…}`.
     public enum Problem: String, Sendable {
         /// The CGEventTap could not be created: grant Accessibility (or Input Monitoring).
@@ -77,12 +83,43 @@ public final class ScreenshotMonitor: @unchecked Sendable {
         public var excludedBundleIdentifiers: Set<String> = []
         /// Leave the calling process's own windows out of captured images.
         public var excludeOwnProcess = true
+        /// Only follow `screencapture` processes launched by the system screenshot hotkeys; other
+        /// programs running the CLI (and processes whose argv cannot be read) are ignored.
+        /// Off by default: every session reports its `origin` either way.
+        public var hotkeyOnly = false
         /// Print diagnostics to stderr. Never includes image contents.
         public var debugLogging = false
         /// Tests turn this off so they never trigger a TCC prompt for the event tap.
         var installsEventTap = true
+        /// Directory for temp images and the stale sweep (nil = the user's temp directory).
+        var tempDirectory: URL? = nil
+        /// System hooks; tests replace them with fakes.
+        var environment = Environment()
 
         public init() {}
+    }
+
+    /// Everything the monitor asks of the system: the process table, display geometry, window
+    /// lookups and the capture itself. Production uses the real implementations; tests inject
+    /// fakes so no process scan, window list or ScreenCaptureKit call is made.
+    struct Environment {
+        var scan: () -> ScreenshotProcessScan = { ScreenshotProcessScan.scan() }
+        var arguments: (pid_t) -> [String]? = { ScreenshotProcessScan.arguments(of: $0) }
+        var displayContaining: (CGPoint) -> CGDirectDisplayID = { ScreenCapture.display(containing: $0) }
+        var backingScale: (CGDirectDisplayID) -> CGFloat = { ScreenCapture.backingScale(of: $0) }
+        var mouseLocation: () -> CGPoint = { ScreenCapture.mouseLocation() }
+        var hasScreenRecordingPermission: () -> Bool = { ScreenCapture.hasScreenRecordingPermission() }
+        var windowAt: (CGPoint, ScreenCapture.Exclusions) -> CGWindowID? = { ScreenCapture.windowID(at: $0, excluding: $1) }
+        var windowBounds: (CGWindowID) -> CGRect? = { ScreenCapture.windowBounds($0) }
+        var toolbarBounds: () -> CGRect? = { ScreenCapture.screenshotToolbarBounds() }
+        /// The Cmd+Shift+5 panel's remembered capture style.
+        var panelStyle: () -> String? = { UserDefaults(suiteName: "com.apple.screencapture")?.string(forKey: "style") }
+        var captureDisplay: (CGDirectDisplayID, CGRect?, ScreenCapture.Exclusions, @escaping (CGImage?, String?) -> Void) -> Void = {
+            ScreenCapture.captureDisplay($0, cropTo: $1, excluding: $2, completion: $3)
+        }
+        var captureWindow: (CGWindowID, @escaping (CGImage?, String?) -> Void) -> Void = {
+            ScreenCapture.captureWindow($0, completion: $1)
+        }
     }
 
     /// A completed capture.
@@ -95,6 +132,8 @@ public final class ScreenshotMonitor: @unchecked Sendable {
         public let scale: CGFloat
         public let mode: Mode
         public let destination: Destination
+        /// Who started the session (hotkey vs another program's CLI invocation).
+        public var origin: Origin = .unknown
         /// Path of the temp file when `Options.writeTempFile` is on.
         public let tempFilePath: String?
         public let timestamp: Date
@@ -121,6 +160,7 @@ public final class ScreenshotMonitor: @unchecked Sendable {
         var invocation: ScreencaptureInvocation
         let startedAt: Date
         var windowMode = false          // Space pressed during selection mode
+        var sawMouseDown = false        // a press began inside this session
         var captureInFlight = false
         var displayID: CGDirectDisplayID?
 
@@ -128,6 +168,7 @@ public final class ScreenshotMonitor: @unchecked Sendable {
     }
 
     private let options: Options
+    private var env: Environment { options.environment }
     private let queue = DispatchQueue(label: "ausm.screenshot-monitor", qos: .userInitiated)
     private let queueKey = DispatchSpecificKey<Void>()
     private var pollTimer: DispatchSourceTimer?
@@ -164,6 +205,11 @@ public final class ScreenshotMonitor: @unchecked Sendable {
         onQueue { stopOnQueue() }
     }
 
+    /// Tests: run `body` synchronously on the monitor's queue (e.g. to drive `poll()`).
+    func performOnQueue(_ body: () -> Void) {
+        onQueue(body)
+    }
+
     /// Run `body` on the queue, synchronously; re-entrant when already on it.
     private func onQueue<T>(_ body: () -> T) -> T {
         if DispatchQueue.getSpecific(key: queueKey) != nil { return body() }
@@ -178,12 +224,12 @@ public final class ScreenshotMonitor: @unchecked Sendable {
         }
 
         if options.writeTempFile, options.staleTempFileAge > 0 {
-            let removed = ScreenCapture.removeStaleTempFiles(olderThan: options.staleTempFileAge)
+            let removed = ScreenCapture.removeStaleTempFiles(olderThan: options.staleTempFileAge, directory: options.tempDirectory)
             if removed > 0 { log("removed \(removed) stale temp image(s)") }
         }
 
         // Baseline: screenshot processes that already exist are not new sessions.
-        knownScan = ScreenshotProcessScan.scan()
+        knownScan = env.scan()
         reportedProblems = []
 
         let timer = DispatchSource.makeTimerSource(queue: queue)
@@ -199,7 +245,7 @@ public final class ScreenshotMonitor: @unchecked Sendable {
         if eventTap == nil, options.installsEventTap {
             report(.accessibilityDenied, "Failed to create event tap — grant Accessibility (System Settings → Privacy & Security → Accessibility). Interactive screenshots will not be tracked until then.")
         }
-        if !ScreenCapture.hasScreenRecordingPermission() {
+        if !env.hasScreenRecordingPermission() {
             report(.screenRecordingDenied, ScreenCapture.screenRecordingDeniedMessage)
         }
     }
@@ -258,15 +304,15 @@ public final class ScreenshotMonitor: @unchecked Sendable {
             }
         }
 
-        if ScreenCapture.hasScreenRecordingPermission() { clear(.screenRecordingDenied) }
+        if env.hasScreenRecordingPermission() { clear(.screenRecordingDenied) }
     }
 
     // MARK: - Process polling
 
-    private func poll() {
+    func poll() {
         checkHealth()
 
-        let scan = ScreenshotProcessScan.scan()
+        let scan = env.scan()
         let previous = knownScan
         knownScan = scan
 
@@ -281,9 +327,13 @@ public final class ScreenshotMonitor: @unchecked Sendable {
         let exited = previous.screencapture.subtracting(scan.screencapture)
 
         for pid in appeared.sorted() {
-            let args = ScreenshotProcessScan.arguments(of: pid) ?? []
+            let args = env.arguments(pid) ?? []
             let invocation = ScreencaptureInvocation(arguments: args)
-            log("screencapture pid \(pid) argv=\(args) → mode=\(invocation.mode) dest=\(invocation.destination) interactive=\(invocation.interactive)")
+            log("screencapture pid \(pid) argv=\(args) → mode=\(invocation.mode) dest=\(invocation.destination) interactive=\(invocation.interactive) origin=\(invocation.origin)")
+            if options.hotkeyOnly && invocation.origin != .hotkey {
+                log("ignoring non-hotkey screencapture pid \(pid)")
+                continue
+            }
             if session != nil {
                 // A new hotkey while a session is open supersedes it.
                 endSession(cancelled: true)
@@ -298,8 +348,8 @@ public final class ScreenshotMonitor: @unchecked Sendable {
                 captureWindow(windowID)
             } else {
                 let rect = current.invocation.explicitRect
-                let point = rect.map { CGPoint(x: $0.midX, y: $0.midY) } ?? ScreenCapture.mouseLocation()
-                captureDisplay(ScreenCapture.display(containing: point), rect: rect)
+                let point = rect.map { CGPoint(x: $0.midX, y: $0.midY) } ?? env.mouseLocation()
+                captureDisplay(env.displayContaining(point), rect: rect)
             }
         }
     }
@@ -313,6 +363,7 @@ public final class ScreenshotMonitor: @unchecked Sendable {
             "pid": Int(pid),
             "mode": invocation.mode.rawValue,
             "destination": invocation.destination.rawValue,
+            "origin": invocation.origin.rawValue,
         ])
         onSessionStarted?(invocation.mode, invocation.destination)
 
@@ -340,6 +391,7 @@ public final class ScreenshotMonitor: @unchecked Sendable {
             pid: current.pid,
             mode: capture?.mode ?? current.effectiveMode,
             destination: current.invocation.destination,
+            origin: current.invocation.origin,
             cancelled: cancelled,
             capture: capture,
             mimeType: options.tempFileFormat.mimeType
@@ -350,36 +402,51 @@ public final class ScreenshotMonitor: @unchecked Sendable {
 
     // MARK: - Input handling
 
-    private func handleMouse(type: CGEventType, location: CGPoint) {
+    func handleMouse(type: CGEventType, location: CGPoint) {
         guard var current = session, current.invocation.interactive, !current.captureInFlight else { return }
 
         switch type {
         case .leftMouseDown:
             if current.displayID == nil {
-                current.displayID = ScreenCapture.display(containing: location)
-                session = current
+                current.displayID = env.displayContaining(location)
             }
+            current.sawMouseDown = true
+            session = current
             rectTracker.handleMouseDown(at: location)
 
         case .leftMouseDragged:
             rectTracker.handleMouseDragged(to: location)
 
         case .leftMouseUp:
+            // A release whose press began before the session (e.g. the button was held while
+            // the hotkey fired) is not a selection gesture.
+            guard current.sawMouseDown else { return }
             let travelled = rectTracker.handleMouseUp(at: location)
             let rect = rectTracker.getCurrentRect()
 
             switch current.invocation.mode {
             case .selection, .window:
                 if current.windowMode || current.invocation.mode == .window {
-                    if travelled < 4, let windowID = ScreenCapture.windowID(at: location, excluding: exclusions()) {
+                    if travelled < 4, let windowID = env.windowAt(location, exclusions()) {
                         captureWindow(windowID)
+                    } else {
+                        // Click over no window, or a drag in window mode: the system UI closes
+                        // without capturing, so the session ends here (otherwise a later click
+                        // would be captured as a phantom screenshot).
+                        log("window-mode release without a window → cancel")
+                        endSession(cancelled: true)
                     }
                 } else if let rect = rect, rect.width >= 2, rect.height >= 2, travelled >= 2 {
-                    captureDisplay(ScreenCapture.display(containing: CGPoint(x: rect.midX, y: rect.midY)), rect: rect)
+                    captureDisplay(env.displayContaining(CGPoint(x: rect.midX, y: rect.midY)), rect: rect)
+                } else {
+                    // Click without drag (or a sub-2pt drag): the selection UI closes without a
+                    // capture. Ending here keeps the next drag from becoming a phantom capture.
+                    log("selection release without a region → cancel")
+                    endSession(cancelled: true)
                 }
             case .interactive:
                 // A click (not a drag) on the right end of the Cmd+Shift+5 toolbar is the Capture button.
-                if travelled < 4, let toolbar = ScreenCapture.screenshotToolbarBounds(), toolbar.contains(location),
+                if travelled < 4, let toolbar = env.toolbarBounds(), toolbar.contains(location),
                    location.x >= toolbar.maxX - 130 {
                     capturePanelSelection()
                 }
@@ -392,7 +459,7 @@ public final class ScreenshotMonitor: @unchecked Sendable {
         }
     }
 
-    private func handleKeyDown(keyCode: Int64, isRepeat: Bool) {
+    func handleKeyDown(keyCode: Int64, isRepeat: Bool) {
         guard var current = session, current.invocation.interactive, !current.captureInFlight else { return }
         switch keyCode {
         case 53: // Esc
@@ -418,7 +485,7 @@ public final class ScreenshotMonitor: @unchecked Sendable {
     /// Called synchronously by `rectTracker`, which only runs on `queue`.
     private func handleRectChanged(_ rect: CGRect) {
         guard let current = session else { return }
-        let displayID = current.displayID ?? ScreenCapture.display(containing: CGPoint(x: rect.midX, y: rect.midY))
+        let displayID = current.displayID ?? env.displayContaining(CGPoint(x: rect.midX, y: rect.midY))
         emit([
             "type": "selection_rect_changed",
             "rect": ScreenshotWire.rect(rect),
@@ -439,17 +506,17 @@ public final class ScreenshotMonitor: @unchecked Sendable {
 
     /// Cmd+Shift+5 panel: the panel remembers its capture style in the screencapture defaults.
     private func capturePanelSelection() {
-        let style = UserDefaults(suiteName: "com.apple.screencapture")?.string(forKey: "style") ?? "selection"
-        let location = ScreenCapture.mouseLocation()
-        if style == "window", let windowID = ScreenCapture.windowID(at: location, excluding: exclusions()) {
+        let style = env.panelStyle() ?? "selection"
+        let location = env.mouseLocation()
+        if style == "window", let windowID = env.windowAt(location, exclusions()) {
             captureWindow(windowID)
             return
         }
         if style == "selection", let rect = rectTracker.getCurrentRect(), rect.width >= 2, rect.height >= 2 {
-            captureDisplay(ScreenCapture.display(containing: CGPoint(x: rect.midX, y: rect.midY)), rect: rect)
+            captureDisplay(env.displayContaining(CGPoint(x: rect.midX, y: rect.midY)), rect: rect)
             return
         }
-        captureDisplay(ScreenCapture.display(containing: location), rect: nil)
+        captureDisplay(env.displayContaining(location), rect: nil)
     }
 
     private func captureDisplay(_ displayID: CGDirectDisplayID, rect: CGRect?) {
@@ -460,7 +527,7 @@ public final class ScreenshotMonitor: @unchecked Sendable {
         let delay = current.invocation.interactive ? options.captureDelay : 0.03
         queue.asyncAfter(deadline: .now() + delay) { [weak self] in
             guard let self = self, self.session?.id == sessionID else { return }
-            ScreenCapture.captureDisplay(displayID, cropTo: rect, excluding: self.exclusions()) { image, error in
+            self.env.captureDisplay(displayID, rect, self.exclusions()) { image, error in
                 self.queue.async { self.finishCapture(sessionID: sessionID, image: image, rect: rect, displayID: displayID, error: error) }
             }
         }
@@ -474,9 +541,9 @@ public final class ScreenshotMonitor: @unchecked Sendable {
         queue.asyncAfter(deadline: .now() + options.captureDelay) { [weak self] in
             guard let self = self, self.session?.id == sessionID else { return }
             // Resolve the display from the window itself (the cursor may be elsewhere for `-l`).
-            let center = ScreenCapture.windowBounds(windowID).map { CGPoint(x: $0.midX, y: $0.midY) }
-            let displayID = ScreenCapture.display(containing: center ?? ScreenCapture.mouseLocation())
-            ScreenCapture.captureWindow(windowID) { image, error in
+            let center = self.env.windowBounds(windowID).map { CGPoint(x: $0.midX, y: $0.midY) }
+            let displayID = self.env.displayContaining(center ?? self.env.mouseLocation())
+            self.env.captureWindow(windowID) { image, error in
                 self.queue.async { self.finishCapture(sessionID: sessionID, image: image, rect: nil, displayID: displayID, error: error) }
             }
         }
@@ -488,7 +555,7 @@ public final class ScreenshotMonitor: @unchecked Sendable {
         guard let image = image else {
             let reason = error ?? "capture returned no image"
             emit(["type": "screenshot_capture_failed", "reason": reason, "displayId": String(displayID)])
-            if !ScreenCapture.hasScreenRecordingPermission() {
+            if !env.hasScreenRecordingPermission() {
                 report(.screenRecordingDenied, ScreenCapture.screenRecordingDeniedMessage)
             }
             endSession(cancelled: true)
@@ -496,16 +563,17 @@ public final class ScreenshotMonitor: @unchecked Sendable {
         }
         var path: String? = nil
         if options.writeTempFile {
-            path = ScreenCapture.writeTemp(image, as: options.tempFileFormat)
+            path = ScreenCapture.writeTemp(image, as: options.tempFileFormat, directory: options.tempDirectory)
             if path == nil { log("failed to write temp image") }
         }
         let capture = Capture(
             image: image,
             rect: rect,
             displayID: displayID,
-            scale: ScreenCapture.backingScale(of: displayID),
+            scale: env.backingScale(displayID),
             mode: current.effectiveMode,
             destination: current.invocation.destination,
+            origin: current.invocation.origin,
             tempFilePath: path,
             timestamp: Date()
         )
@@ -551,6 +619,7 @@ enum ScreenshotWire {
         pid: pid_t,
         mode: ScreenshotMonitor.Mode,
         destination: ScreenshotMonitor.Destination,
+        origin: ScreenshotMonitor.Origin = .unknown,
         cancelled: Bool,
         capture: ScreenshotMonitor.Capture?,
         mimeType: String
@@ -560,6 +629,7 @@ enum ScreenshotWire {
             "pid": Int(pid),
             "mode": mode.rawValue,
             "destination": destination.rawValue,
+            "origin": origin.rawValue,
             "cancelled": cancelled,
         ]
         if let capture = capture {

@@ -50,11 +50,12 @@ final class CommandServer {
 
     func stop() {
         running = false
-        if serverFd >= 0 {
-            Darwin.shutdown(serverFd, SHUT_RDWR)
-            Darwin.close(serverFd)
-            serverFd = -1
-        }
+        // Only remove the socket file we bound: if start() failed (e.g. the path is an existing
+        // regular file) the path is not ours to delete.
+        guard serverFd >= 0 else { return }
+        Darwin.shutdown(serverFd, SHUT_RDWR)
+        Darwin.close(serverFd)
+        serverFd = -1
         unlink(socketPath)
     }
 
@@ -182,7 +183,8 @@ final class CommandServer {
     }
 
     private func sendResponse(_ clientFd: Int32, response: [String: Any]) {
-        guard let jsonData = try? JSONSerialization.data(withJSONObject: response) else { return }
+        guard JSONSerialization.isValidJSONObject(response),
+              let jsonData = try? JSONSerialization.data(withJSONObject: response) else { return }
         jsonData.withUnsafeBytes { buffer in
             guard let base = buffer.baseAddress else { return }
             var written = 0

@@ -14,28 +14,37 @@ import { DetectorEntry, DetectorFrontmatter, DetectorsConfig, DetectorEntryConfi
 const FRONTMATTER_RE = /^---\r?\n([\s\S]*?)\r?\n---\r?\n?([\s\S]*)$/;
 
 /**
+ * Read a single-line scalar `key: value`. `[ \t]*` (not `\s*`) keeps an empty
+ * value from swallowing the next line; only a matching pair of surrounding
+ * quotes is stripped, so `Says "hi"` keeps its closing quote.
+ */
+function readScalar(yamlBlock: string, key: string): string | null {
+    const match = yamlBlock.match(new RegExp(`^${key}:[ \\t]*(.*?)[ \\t]*$`, 'm'));
+    if (!match) return null;
+    let value = match[1];
+    if (value.length >= 2 && (value[0] === '"' || value[0] === "'") && value[value.length - 1] === value[0]) {
+        value = value.slice(1, -1);
+    }
+    value = value.trim();
+    return value || null;
+}
+
+/**
  * Parse DETECTOR.md frontmatter and body.
  * Handles the fields specific to detectors: name, description, event, cooldown, sources, enabled.
  */
 export function parseDetectorFrontmatter(raw: string): { frontmatter: DetectorFrontmatter; body: string } | null {
-    const match = raw.match(FRONTMATTER_RE);
+    const match = raw.replace(/^\uFEFF/, '').match(FRONTMATTER_RE);
     if (!match) return null;
 
     const yamlBlock = match[1];
     const body = match[2].trim();
 
-    const nameMatch = yamlBlock.match(/^name:\s*["']?(.+?)["']?\s*$/m);
-    const descMatch = yamlBlock.match(/^description:\s*["']?([\s\S]*?)["']?\s*$/m);
-    const eventMatch = yamlBlock.match(/^event:\s*["']?(.+?)["']?\s*$/m);
+    const name = readScalar(yamlBlock, 'name');
+    const description = readScalar(yamlBlock, 'description');
+    const event = readScalar(yamlBlock, 'event');
 
-    if (!nameMatch || !descMatch || !eventMatch) return null;
-
-    const name = nameMatch[1].trim();
-    let description = descMatch[1].trim();
-    if (description.endsWith('"') || description.endsWith("'")) {
-        description = description.slice(0, -1);
-    }
-    const event = eventMatch[1].trim();
+    if (!name || !description || !event) return null;
 
     const frontmatter: DetectorFrontmatter = { name, description, event };
 

@@ -103,7 +103,9 @@ export class TaskTracker {
                 taskLabel: overrides?.label ?? task.label,
                 taskDescription: overrides?.description ?? task.description,
                 confidence: observation.confidence,
-                application: observation.application ?? task.application,
+                // The tracked task owns its application (already merged for continue/update).
+                // On a switch the COMPLETED event must not take the new observation's app.
+                application: task.application,
                 detectorName: observation.detectorName ?? 'rapid-task',
                 evidence: observation.evidence ?? null,
                 rawModelResponse: observation.rawModelResponse ?? null,
@@ -192,12 +194,12 @@ export function observationFromDetectorResult(result: {
 }): TaskObservation {
     const fromJson = parseSummaryJson(result.summary);
     const label = (
-        result.taskLabel
+        result.taskLabel?.trim()
         || fromJson?.label
         || splitSummary(result.summary).label
     ).trim();
     const description = (
-        result.taskDescription
+        result.taskDescription?.trim()
         || fromJson?.description
         || splitSummary(result.summary).description
         || result.evidence
@@ -267,13 +269,20 @@ function parseSummaryJson(summary: string): Record<string, string> | null {
 }
 
 function normalizeText(value: string): string {
-    return value.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+    // Unicode-aware: an ASCII-only class erased non-Latin labels entirely, so they never matched.
+    return value.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
+}
+
+/** Labels made only of symbols/emoji normalize to nothing; compare them verbatim instead. */
+function sameRaw(a: string, b: string): boolean {
+    const ra = a.trim().toLowerCase();
+    return ra.length > 0 && ra === b.trim().toLowerCase();
 }
 
 function similarLabel(a: string, b: string): boolean {
     const na = normalizeText(a);
     const nb = normalizeText(b);
-    if (!na || !nb) return false;
+    if (!na || !nb) return sameRaw(a, b);
     if (na === nb) return true;
     return tokenOverlap(na, nb) >= 0.7;
 }
@@ -291,7 +300,7 @@ function sameWork(prevLabel: string, prevDescription: string, nextLabel: string,
 function similarText(a: string, b: string): boolean {
     const na = normalizeText(a);
     const nb = normalizeText(b);
-    if (!na || !nb) return false;
+    if (!na || !nb) return sameRaw(a, b);
     if (na === nb) return true;
     return tokenOverlap(na, nb) >= 0.6;
 }

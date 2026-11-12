@@ -97,7 +97,7 @@ export class TextInputMonitorService extends EventEmitter {
             return this.startStub();
         }
 
-        const binary = helperBinary();
+        const binary = config?.helperPath ?? helperBinary();
         if (!fs.existsSync(binary)) {
             this.handleError(
                 `Text input helper binary not found at ${binary}. Run 'npm run build:swift' in @ausm/device-macos-text-input.`,
@@ -139,6 +139,15 @@ export class TextInputMonitorService extends EventEmitter {
 
         child.on('error', (err) => {
             this.handleError(`Helper process error: ${err.message}`);
+            // A spawn failure (EACCES, ENOENT) emits 'error' and 'close' but never 'exit':
+            // without this the monitor would stay "running" with no helper behind it.
+            if (this.process !== child || child.pid !== undefined) return;
+            this.process = null;
+            this.readline?.close();
+            this.readline = null;
+            if (!this.running) return;
+            this.running = false;
+            this.emit('status', 'stopped');
         });
 
         child.on('exit', (code, signal) => {

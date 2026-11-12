@@ -33,11 +33,16 @@ export class OcrWorker {
     private pythonPath: string;
     private requestTimeoutMs: number;
     private debug: boolean;
-    private onReadyCallback: (() => void) | null = null;
+    /** In-progress start, shared by concurrent callers. */
+    private startPromise: Promise<void> | null = null;
 
     private pending = new Map<
         string,
-        { resolve: (lines: string[]) => void; reject: (err: Error) => void }
+        {
+            resolve: (lines: string[]) => void;
+            reject: (err: Error) => void;
+            timer: ReturnType<typeof setTimeout>;
+        }
     >();
 
     constructor(options: OcrWorkerOptions = {}) {
@@ -48,12 +53,10 @@ export class OcrWorker {
 
     /** Start the Python subprocess. Resolves when it signals "ready". */
     start(): Promise<void> {
-        return new Promise((resolve, reject) => {
-            if (this.process) {
-                resolve();
-                return;
-            }
+        if (this.isReady()) return Promise.resolve();
+        if (this.startPromise) return this.startPromise;
 
+        const promise = new Promise<void>((resolve, reject) => {
             // Published package ships src/memory/py next to dist/memory-service.js.
             const candidates = [
                 path.resolve(__dirname, '../src/memory/py/ocr_worker.py'),
@@ -72,34 +75,42 @@ export class OcrWorker {
             const child = spawn(this.pythonPath, [resolvedScript], {
                 stdio: ['pipe', 'pipe', 'pipe'],
             });
+            // Track the child immediately so stop() can kill it even before
+            // it reports ready (it used to be orphaned).
+            this.process = child;
+
+            let settled = false;
+            const settle = (err?: Error) => {
+                if (settled) return;
+                settled = true;
+                clearTimeout(startupTimeout);
+                if (err) reject(err);
+                else resolve();
+            };
 
             const startupTimeout = setTimeout(() => {
-                if (!this.ready) {
-                    reject(new Error('OCR worker timed out waiting for ready (15s)'));
-                    child.kill('SIGKILL');
-                }
+                settle(new Error('OCR worker timed out waiting for ready (15s)'));
+                child.kill('SIGKILL');
             }, 15_000);
 
             child.on('error', (err) => {
-                clearTimeout(startupTimeout);
-                if (!this.ready) {
-                    reject(new Error(`OCR worker failed to start: ${err.message}`));
-                }
-                this.cleanup();
+                settle(new Error(`OCR worker failed to start: ${err.message}`));
+                if (this.process === child) this.cleanup();
             });
 
             child.on('exit', (code, signal) => {
-                clearTimeout(startupTimeout);
                 this.logDebug(`Subprocess exited (code=${code}, signal=${signal})`);
-                if (!this.ready) {
-                    reject(new Error(`OCR worker exited before ready (code=${code})`));
+                settle(new Error(`OCR worker exited before ready (code=${code})`));
+                // Only the current worker's exit affects shared state; a
+                // previous worker exiting late must not touch its successor.
+                if (this.process === child) {
+                    this.rejectAll(new Error('OCR worker subprocess exited'));
+                    this.cleanup();
                 }
-                for (const [, p] of this.pending) {
-                    p.reject(new Error('OCR worker subprocess exited'));
-                }
-                this.pending.clear();
-                this.cleanup();
             });
+
+            // A dead child turns stdin writes into EPIPE 'error' events.
+            child.stdin?.on('error', (err) => this.logDebug(`stdin error: ${err.message}`));
 
             child.stderr?.on('data', (chunk: Buffer) => {
                 if (this.debug) {
@@ -110,36 +121,50 @@ export class OcrWorker {
             if (child.stdout) {
                 const rl = createInterface({ input: child.stdout });
                 rl.on('line', (line) => {
-                    if (!line.trim()) return;
+                    if (!line.trim() || this.process !== child) return;
+                    let data: unknown;
                     try {
-                        this.handleResponse(JSON.parse(line));
+                        data = JSON.parse(line);
                     } catch {
-                        this.logDebug(`Failed to parse response: ${line.substring(0, 200)}`);
+                        this.logDebug(`Failed to parse response (${line.length} bytes)`);
+                        return;
                     }
+                    if (!data || typeof data !== 'object') return;
+                    const msg = data as Record<string, unknown>;
+                    if (msg.type === 'ready') {
+                        if (!this.ready) {
+                            this.ready = true;
+                            this.logDebug('OCR worker ready');
+                            settle();
+                        }
+                        return;
+                    }
+                    this.handleResponse(msg);
                 });
                 this.readline = rl;
             }
-
-            this.onReadyCallback = () => {
-                clearTimeout(startupTimeout);
-                this.ready = true;
-                this.process = child;
-                this.logDebug('OCR worker ready');
-                resolve();
-            };
         });
+
+        this.startPromise = promise;
+        const clear = () => {
+            if (this.startPromise === promise) this.startPromise = null;
+        };
+        promise.then(clear, clear);
+        return promise;
     }
 
     stop(): void {
-        if (this.process && !this.process.killed) {
-            this.process.stdin?.end();
-            const proc = this.process;
+        const proc = this.process;
+        if (proc && proc.exitCode === null && proc.signalCode === null) {
+            proc.stdin?.end();
             const killTimer = setTimeout(() => {
-                if (!proc.killed) proc.kill('SIGKILL');
+                if (proc.exitCode === null && proc.signalCode === null) proc.kill('SIGKILL');
             }, 2000);
+            killTimer.unref?.();
             proc.once('exit', () => clearTimeout(killTimer));
             proc.kill('SIGTERM');
         }
+        this.rejectAll(new Error('OCR worker stopped'));
         this.cleanup();
     }
 
@@ -150,13 +175,19 @@ export class OcrWorker {
     /** OCR a single JPEG. Returns the recognized text lines (top-to-bottom). */
     recognize(jpegData: Buffer): Promise<string[]> {
         return new Promise((resolve, reject) => {
-            if (!this.isReady()) {
+            const child = this.process;
+            if (!this.isReady() || !child?.stdin?.writable) {
                 reject(new Error('OCR worker not ready'));
                 return;
             }
 
             const requestId = `ocr_${++this.nextId}`;
-            this.pending.set(requestId, { resolve, reject });
+            const timer = setTimeout(() => {
+                if (this.pending.delete(requestId)) {
+                    reject(new Error(`OCR request timed out (${requestId})`));
+                }
+            }, this.requestTimeoutMs);
+            this.pending.set(requestId, { resolve, reject, timer });
 
             const line = JSON.stringify({
                 cmd: 'ocr',
@@ -164,45 +195,45 @@ export class OcrWorker {
                 imageData: jpegData.toString('base64'),
             }) + '\n';
 
-            this.process!.stdin!.write(line, (err) => {
-                if (err) {
-                    this.pending.delete(requestId);
+            child.stdin.write(line, (err) => {
+                if (err && this.pending.delete(requestId)) {
+                    clearTimeout(timer);
                     reject(new Error(`Failed to write to OCR worker: ${err.message}`));
                 }
             });
-
-            setTimeout(() => {
-                if (this.pending.has(requestId)) {
-                    this.pending.delete(requestId);
-                    reject(new Error(`OCR request timed out (${requestId})`));
-                }
-            }, this.requestTimeoutMs);
         });
     }
 
     private handleResponse(data: Record<string, unknown>): void {
-        if (data.type === 'ready') {
-            this.onReadyCallback?.();
-            this.onReadyCallback = null;
-            return;
-        }
-
         const requestId = String(data.requestId ?? '');
         const pending = this.pending.get(requestId);
         if (!pending) return;
         this.pending.delete(requestId);
+        clearTimeout(pending.timer);
 
         if (data.ok) {
-            pending.resolve((data.lines as string[]) ?? []);
+            // Keep only string lines: a malformed reply must not reach the
+            // deduper (non-strings made it throw, a string was iterated per char).
+            const lines = Array.isArray(data.lines)
+                ? data.lines.filter((l): l is string => typeof l === 'string')
+                : [];
+            pending.resolve(lines);
         } else {
-            pending.reject(new Error((data.error as string) ?? 'Unknown OCR error'));
+            pending.reject(new Error(typeof data.error === 'string' ? data.error : 'Unknown OCR error'));
         }
+    }
+
+    private rejectAll(err: Error): void {
+        for (const [, p] of this.pending) {
+            clearTimeout(p.timer);
+            p.reject(err);
+        }
+        this.pending.clear();
     }
 
     private cleanup(): void {
         this.ready = false;
         this.process = null;
-        this.onReadyCallback = null;
         if (this.readline) {
             this.readline.close();
             this.readline = null;
@@ -244,6 +275,7 @@ export class LineDeduper {
 
     addLines(newLines: string[]): void {
         for (const raw of newLines) {
+            if (typeof raw !== 'string') continue;
             const n = normalizeLine(raw);
             if (n.length < 2) continue;
             if (this.seen.has(n)) continue;

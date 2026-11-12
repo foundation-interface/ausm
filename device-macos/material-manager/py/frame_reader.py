@@ -229,7 +229,7 @@ def sanitize_grid(value) -> int:
     """Coerce a requested hashGrid to an int in [1, MAX_HASH_GRID]."""
     try:
         grid = int(value)
-    except (TypeError, ValueError):
+    except (TypeError, ValueError, OverflowError):
         return 4
     return max(1, min(grid, MAX_HASH_GRID))
 
@@ -238,7 +238,7 @@ def sanitize_quality(value) -> int:
     """Coerce a requested JPEG quality to an int in [1, 100]."""
     try:
         q = int(value)
-    except (TypeError, ValueError):
+    except (TypeError, ValueError, OverflowError):
         return 85
     return max(1, min(q, 100))
 
@@ -290,10 +290,18 @@ def compute_hash(image: np.ndarray, grid: int, hash_size: int = 8) -> str:
 
 
 def compute_distance(hash1: str, hash2: str, grid: int, hash_size: int = 8) -> int:
-    """Compare hashes using single or tiled strategy based on grid size."""
-    if grid <= 1:
-        return hamming_distance(hash1, hash2)
-    return hamming_distance_tiled(hash1, hash2, grid, hash_size)
+    """Compare hashes using single or tiled strategy based on grid size.
+
+    A previous hash that is not valid hex (corrupted / foreign) is treated
+    like a format mismatch (-1, i.e. "first frame") instead of failing the
+    whole request.
+    """
+    try:
+        if grid <= 1:
+            return hamming_distance(hash1, hash2)
+        return hamming_distance_tiled(hash1, hash2, grid, hash_size)
+    except ValueError:
+        return -1
 
 
 # ─── Frame Reader ─────────────────────────────────────────────────────────
