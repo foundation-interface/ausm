@@ -361,6 +361,22 @@ function dispatchToCallbacks<T>(callbacks: EventCallback<T>[], event: T, label: 
 // Event Frequency Monitor
 // ============================================================================
 
+/**
+ * If the host's stdout/stderr is a pipe whose reader went away (`app | head`,
+ * a closed terminal), the next console.log emits EPIPE on the stream, and with
+ * no listener that becomes an uncaught exception that kills the host. Losing
+ * log lines is fine; crashing is not.
+ */
+let stdioGuarded = false;
+function guardBrokenStdio(): void {
+    if (stdioGuarded) return;
+    stdioGuarded = true;
+    for (const stream of [process.stdout, process.stderr]) {
+        // Swallow every stdio error: reporting it would mean writing to the same broken stream.
+        stream?.on?.('error', () => {});
+    }
+}
+
 class EventFrequencyMonitor {
     private counts = new Map<string, number>();
     private windowStart = Date.now();
@@ -556,14 +572,14 @@ class ScreenStreamingManagerImpl {
         this.config = config;
     }
 
-    async start(): Promise<void> {
+    async start(): Promise<boolean> {
         if (!this.config.enableScreenStreaming) {
-            return;
+            return this.running;
         }
 
         if (this.running) {
             console.log('[AUSM] Screen streaming already running');
-            return;
+            return this.running;
         }
 
         const streamingConfig = this.config.screenStreaming || {};
@@ -586,12 +602,16 @@ class ScreenStreamingManagerImpl {
                 console.log('[AUSM] Screen streaming service started');
                 console.log('[AUSM] Shared memory: %s', streamingConfig.sharedMemoryName ?? '/ausm-frames');
             } else {
+                // The service already logged why; drop it so callers see "not available"
+                // instead of polling a helper that never came up.
                 console.error('[AUSM] Failed to start screen streaming');
+                this.service = null;
             }
         } catch (err) {
             console.warn('[AUSM] Screen streaming not available:', (err as Error).message);
             this.service = null;
         }
+        return this.running;
     }
 
     async stop(): Promise<void> {
@@ -651,14 +671,14 @@ class CameraStreamingManagerImpl {
         this.config = config;
     }
 
-    async start(): Promise<void> {
+    async start(): Promise<boolean> {
         if (!this.config.enableCameraStreaming) {
-            return;
+            return this.running;
         }
 
         if (this.running) {
             console.log('[AUSM] Camera streaming already running');
-            return;
+            return this.running;
         }
 
         try {
@@ -682,12 +702,16 @@ class CameraStreamingManagerImpl {
                 console.log('[AUSM] Camera streaming service started');
                 console.log('[AUSM] Camera shared memory: %s', streamingConfig.sharedMemoryName ?? '/ausm-camera-frames');
             } else {
+                // The service already logged why; drop it so callers see "not available"
+                // instead of polling a helper that never came up.
                 console.error('[AUSM] Failed to start camera streaming');
+                this.service = null;
             }
         } catch (err) {
             console.warn('[AUSM] Camera streaming not available:', (err as Error).message);
             this.service = null;
         }
+        return this.running;
     }
 
     async stop(): Promise<void> {
@@ -1768,12 +1792,14 @@ export class AUSMRuntime {
             console.log(`[AUSM] ${name} (+${elapsed}ms)`);
         };
         
+        guardBrokenStdio();
         console.log('[AUSM] Initializing Runtime...');
         this.frequencyMonitor?.start();
         
         // Step 1: Start screen streaming
+        let screenUp = false;
         try {
-            await this.screenStreamingManager.start();
+            screenUp = await this.screenStreamingManager.start();
         } catch (err) {
             console.warn('[AUSM] Screen streaming failed to start:', (err as Error).message);
         }
@@ -1781,11 +1807,12 @@ export class AUSMRuntime {
             this.screenStreamingManager.stop().catch(() => {});
             return;
         }
-        checkpoint('Screen streaming started');
+        checkpoint(screenUp ? 'Screen streaming started' : 'Screen streaming unavailable');
 
         // Step 1b: Start camera streaming (optional, default off)
+        let cameraUp = false;
         try {
-            await this.cameraStreamingManager.start();
+            cameraUp = await this.cameraStreamingManager.start();
         } catch (err) {
             console.warn('[AUSM] Camera streaming failed to start:', (err as Error).message);
         }
@@ -1793,7 +1820,7 @@ export class AUSMRuntime {
             this.cameraStreamingManager.stop().catch(() => {});
             return;
         }
-        checkpoint('Camera streaming started');
+        checkpoint(cameraUp ? 'Camera streaming started' : 'Camera streaming off');
 
         // Step 2: Start event sources
         await this.textSelectionDetector.start();
