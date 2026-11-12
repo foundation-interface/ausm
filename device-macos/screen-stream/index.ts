@@ -115,11 +115,19 @@ export class ScreenStreamingService {
     /**
      * Get list of available displays.
      */
+    private displaysErrorLogged = false;
+
     async getDisplays() {
         try {
-            return await this.helper.getDisplays();
+            const result = await this.helper.getDisplays();
+            this.displaysErrorLogged = false;
+            return result;
         } catch (err) {
-            console.error('[ScreenStreamingService] Failed to get displays:', err);
+            // Callers poll this every tick; say it once per outage, not once per tick.
+            if (!this.displaysErrorLogged) {
+                this.displaysErrorLogged = true;
+                console.error('[ScreenStreamingService] Failed to get displays:', (err as Error).message);
+            }
             return [];
         }
     }

@@ -1,4 +1,4 @@
-/// Pure, side-effect-free window-state logic (unit-tested in Tests/ViewportHelperTests).
+/// Pure, side-effect-free window-state logic (unit-tested in Tests/WindowMonitorKitTests).
 
 import CoreGraphics
 import Foundation
@@ -15,29 +15,29 @@ enum WindowDiff {
         var boundsChangedCount = 0
 
         for (key, oldWin) in old.sorted(by: { $0.value.zIndex < $1.value.zIndex }) where new[key] == nil {
-            events.append(oldWin.toEvent(type: "window-closed"))
+            events.append(oldWin.toEvent(type: .closed))
         }
 
         for (key, newWin) in new.sorted(by: { $0.value.zIndex < $1.value.zIndex }) {
             if let oldWin = old[key] {
                 if oldWin.title != newWin.title {
-                    var evt = newWin.toEvent(type: "title-changed")
+                    var evt = newWin.toEvent(type: .titleChanged)
                     evt.oldTitle = oldWin.title
                     events.append(evt)
                 }
                 if oldWin.bounds != newWin.bounds {
-                    var evt = newWin.toEvent(type: "bounds-changed")
+                    var evt = newWin.toEvent(type: .boundsChanged)
                     evt.oldBounds = .init(oldWin.bounds)
                     events.append(evt)
                     boundsChangedCount += 1
                 }
             } else {
-                events.append(newWin.toEvent(type: "window-opened"))
+                events.append(newWin.toEvent(type: .opened))
             }
         }
 
         if boundsChangedCount > 1 {
-            events.removeAll { $0.type == "bounds-changed" }
+            events.removeAll { $0.type == .boundsChanged }
         }
         return events
     }
@@ -94,5 +94,24 @@ enum WindowDiff {
             if minDim * minDim < 80 * 80 && rect.origin.y < minDim { return false }
         }
         return true
+    }
+
+    /// The frontmost (lowest z-index) window owned by `pid`.
+    static func frontmostWindow(of pid: pid_t, in windows: [String: WindowSnapshot]) -> WindowSnapshot? {
+        windows.values
+            .filter { $0.ownerPID == pid }
+            .min(by: { $0.zIndex < $1.zIndex })
+    }
+
+    /// Match an AX focus event to a CGWindowList window: same pid and approximately equal
+    /// bounds; ties broken by title, then by the first match.
+    static func findWindow(matching ax: AccessibilityWindowInfo,
+                           in windows: [String: WindowSnapshot]) -> WindowSnapshot? {
+        let matches = windows.values
+            .filter { $0.ownerPID == ax.appPID && approximatelyEqual($0.bounds, ax.windowRect) }
+            .sorted { $0.zIndex < $1.zIndex }
+        if matches.count <= 1 { return matches.first }
+        let titled = matches.filter { titlesMatch(cgTitle: $0.title, axTitle: ax.windowTitle) }
+        return titled.first ?? matches.first
     }
 }

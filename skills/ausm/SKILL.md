@@ -1,6 +1,6 @@
 ---
 name: ausm
-description: Build context-aware apps and agents on macOS with AUSM (Activity Understanding and Scaffolding Medium). Use when code imports `ausm`, `ausm/runtime`, `ausm/bridge/*`, `@ausm/*`, `ScreenshotMonitorKit` or `CursorMonitorKit`, or when the user wants an app to react to what they do on their Mac (text selection, typing, copy/paste, window focus, screenshots, cursor, screen frames, detected tasks).
+description: Build context-aware apps and agents on macOS with AUSM (Activity Understanding and Scaffolding Medium). Use when code imports `ausm`, `ausm/runtime`, `ausm/bridge/*`, `@ausm/*`, `ScreenshotMonitorKit`, `CursorMonitorKit`, `ClipboardMonitorKit`, `WindowMonitorKit` or `TextInputMonitorKit`, or when the user wants an app to react to what they do on their Mac (text selection, typing, copy/paste, window focus, screenshots, cursor, screen frames, detected tasks).
 ---
 
 # AUSM
@@ -20,10 +20,10 @@ Three layers, each optional on top of the one before:
 | --- | --- | --- |
 | Node or Electron main process | `createRuntime()` from `ausm/runtime` | The full stack. Helpers run as child processes. |
 | Electron renderer | `window.ausm` via the bridge preload | Events only. Memory queries are main-process only. |
-| Native Swift / SwiftUI app | `ScreenshotMonitorKit`, `CursorMonitorKit` (SwiftPM) | In-process, statically linked, no Node. Only these two sensors. |
+| Native Swift / SwiftUI app | `ScreenshotMonitorKit`, `CursorMonitorKit`, `ClipboardMonitorKit`, `WindowMonitorKit`, `TextInputMonitorKit` (SwiftPM) | In-process, statically linked, no Node. Only these five sensors (no text selection, screen stream, camera, materials or detectors). |
 
 Never mix paths for the same sensor in one app (for example the Swift kit and the Node
-screenshot helper at once). Both install event taps.
+screenshot helper at once). Both install event taps or AX observers and report every event twice.
 
 ## Node / Electron
 
@@ -147,10 +147,13 @@ with memory search and a Claude agent over the user's materials. Get its URL fro
 
 ```swift
 // Package.swift
-.package(url: "https://github.com/foundation-interface/AUSM.git", from: "0.1.0"),
-// target dependencies
+.package(url: "https://github.com/foundation-interface/ausm.git", from: "0.1.0"),
+// target dependencies: only the kits you use
 .product(name: "ScreenshotMonitorKit", package: "AUSM"),
 .product(name: "CursorMonitorKit", package: "AUSM"),
+.product(name: "ClipboardMonitorKit", package: "AUSM"),
+.product(name: "WindowMonitorKit", package: "AUSM"),
+.product(name: "TextInputMonitorKit", package: "AUSM"),
 ```
 
 ```swift
@@ -166,10 +169,38 @@ shots.onError = { problem, message in }   // accessibility_denied, screen_record
 shots.start()
 ```
 
-- `ScreenshotMonitor` callbacks arrive on a private serial queue. Hop to the main actor for UI.
-  `start()`/`stop()` are safe from any thread.
-- `CursorMonitor.onEvent(CursorEvent, CursorContext?)` arrives on the main thread. The context
-  carries the live `AXUIElement` under the cursor.
+```swift
+import WindowMonitorKit
+
+let windows = WindowMonitor()
+windows.onEvent = { event in              // private queue
+  switch event {
+  case .window(let e): Task { @MainActor in update(e.type, e.bundleId, e.bounds.cgRect) }
+  case .spaceChanged, .ready, .permissionsChanged: break
+  }
+}
+windows.onError = { problem, message in } // accessibility_denied, screen_recording_denied
+windows.start()
+```
+
+| Kit | Monitor | Events | Callbacks on |
+| --- | --- | --- | --- |
+| `ScreenshotMonitorKit` | `ScreenshotMonitor` | `onCapture(Capture)` (CGImage, rect, scale, mode), session callbacks | private queue |
+| `CursorMonitorKit` | `CursorMonitor` | `onEvent(CursorEvent, CursorContext?)`, context has the live `AXUIElement` | main thread |
+| `ClipboardMonitorKit` | `ClipboardMonitor` | `onEvent(ClipboardEvent)`: `contentType`, `content`, `contentPaths`, `concealed` | private queue |
+| `WindowMonitorKit` | `WindowMonitor` | `onEvent(WindowMonitorEvent)`: `.window(WindowEvent)` opened/closed/focused/unfocused/boundsChanged/titleChanged, `.spaceChanged`, `.ready`/`.permissionsChanged` | private queue |
+| `TextInputMonitorKit` | `TextInputMonitor` | `onEvent(TextInputMonitorEvent)`: `.textInput(TextInputEvent)` with `status` started/updated/finished and `text` | private queue |
+
+- Private-queue kits: hop to the main actor for UI. `start()`/`stop()` are idempotent and safe
+  from any thread, including inside a callback. `CursorMonitor` must be started and stopped on
+  the main thread.
+- `WindowMonitorKit` and `TextInputMonitorKit` need the main run loop running (any
+  NSApplication does). `TextInputMonitor.stop()` delivers a final `finished` for an edit in
+  progress.
+- Each kit has `onError(Problem, String)` (cursor: an `error` `CursorEvent`). Show the user what
+  to grant; the kits pick up a grant without a restart.
+- Privacy is built in: password fields and concealed/transient clipboard entries never produce
+  content. Text input is sensitive: turn it on only when the feature needs it.
 - The kits are compiled into the host binary. The **host app** is what the user grants
   Accessibility and Screen Recording to, and it must be signed with a stable identity, or macOS
   drops the grants on every rebuild.

@@ -2,7 +2,7 @@
 
 **activity understanding and scaffolding medium.** it turns what you do on your mac into live, typed context for apps and agents.
 
-[docs](https://foundation-interface.github.io/AUSM/) · [reference](docs/reference.md) · [agent skill](skills/ausm/SKILL.md) · mit · macos 13+
+[docs](https://foundation-interface.github.io/ausm/) · [reference](docs/reference.md) · [agent skill](skills/ausm/SKILL.md) · mit · macos 13+
 
 most software only knows what happens inside itself. an assistant that wants to help has to wait for you to paste the context in. ausm watches the whole mac, on your machine, and tells your code what you're doing as it happens:
 
@@ -104,19 +104,19 @@ for a few minutes without editing any code.
 
 then listen with `ausm.onDetectorEvent`.
 
-building a native mac app? the screenshot and cursor sensors also come as swift packages, with no node needed:
+building a native mac app? the screenshot, cursor, clipboard, window and text input sensors also come as swift packages, with no node needed:
 
 ```swift
-.package(url: "https://github.com/foundation-interface/AUSM.git", from: "0.1.0")
-// products: ScreenshotMonitorKit, CursorMonitorKit
+.package(url: "https://github.com/foundation-interface/ausm.git", from: "0.1.0")
+// products: ScreenshotMonitorKit, CursorMonitorKit, ClipboardMonitorKit, WindowMonitorKit, TextInputMonitorKit
 ```
 
 your app needs **accessibility**, plus **screen recording** for screenshots and frames. everything stays on your mac. if you add a model provider (cerebras, vertex or any openai-compatible endpoint), only the focused window's frame and a summary of recent events are sent.
 
 ## more
 
-- [docs](https://foundation-interface.github.io/AUSM/): sensors, materials, memory, tasks and models, with live diagrams
+- [docs](https://foundation-interface.github.io/ausm/): sensors, materials, memory, tasks and models, with live diagrams
 - [reference](docs/reference.md): every event, option, detector field and build step
-- coding agents: `npx skills add foundation-interface/AUSM`
+- coding agents: `npx skills add foundation-interface/ausm`
 
 built at the foundation interface lab, uc san diego, by rima cao and haijun xia. [fairy cursor](https://github.com/Rrrima/fairy-cursor) runs on it.

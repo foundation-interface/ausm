@@ -1,27 +1,38 @@
 // swift-tools-version: 5.9
-import PackageDescription
 import Foundation
+import PackageDescription
 
-// Unit tests live in Tests/ in the git repo but are not shipped in the npm tarball;
-// only declare the test target when the directory exists so the published sources still build.
-let hasTests = FileManager.default.fileExists(atPath: Context.packageDirectory + "/Tests/ViewportHelperTests")
-
-var targets: [Target] = [
-    .executableTarget(
-        name: "ViewportHelper",
-        path: "Sources/ViewportHelper"
-    ),
-]
-if hasTests {
-    targets.append(.testTarget(
-        name: "ViewportHelperTests",
-        dependencies: ["ViewportHelper"],
-        path: "Tests/ViewportHelperTests"
-    ))
-}
-
+// Two products:
+//   - WindowMonitorKit: a library so native macOS hosts can run the window monitor
+//     in-process and receive typed window / Space / permission events.
+//   - ViewportHelper: the standalone JSON-lines subprocess used by the
+//     @ausm/device-macos-viewport-manager Node wrapper.
 let package = Package(
     name: "ViewportHelper",
     platforms: [.macOS(.v12)],
-    targets: targets
+    products: [
+        .library(name: "WindowMonitorKit", targets: ["WindowMonitorKit"]),
+        .executable(name: "ViewportHelper", targets: ["ViewportHelper"]),
+    ],
+    targets: [
+        .target(
+            name: "WindowMonitorKit",
+            path: "Sources/WindowMonitorKit"
+        ),
+        .executableTarget(
+            name: "ViewportHelper",
+            dependencies: ["WindowMonitorKit"],
+            path: "Sources/ViewportHelper"
+        ),
+    ]
 )
+
+// Pure-logic XCTests (no TCC permissions needed). Tests/ is not shipped in the npm tarball,
+// so the target is only declared when the directory exists.
+if FileManager.default.fileExists(atPath: Context.packageDirectory + "/Tests") {
+    package.targets.append(.testTarget(
+        name: "WindowMonitorKitTests",
+        dependencies: ["WindowMonitorKit"],
+        path: "Tests/WindowMonitorKitTests"
+    ))
+}

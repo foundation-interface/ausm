@@ -174,11 +174,19 @@ export class CameraStreamingService {
         }
     }
 
+    private devicesErrorLogged = false;
+
     async getDevices() {
         try {
-            return await this.helper.getDevices();
+            const result = await this.helper.getDevices();
+            this.devicesErrorLogged = false;
+            return result;
         } catch (err) {
-            console.error('[CameraStreamingService] Failed to get devices:', err);
+            // Callers poll this every tick; say it once per outage, not once per tick.
+            if (!this.devicesErrorLogged) {
+                this.devicesErrorLogged = true;
+                console.error('[CameraStreamingService] Failed to get devices:', (err as Error).message);
+            }
             return [];
         }
     }
