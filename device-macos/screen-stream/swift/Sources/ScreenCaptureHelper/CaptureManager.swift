@@ -509,24 +509,45 @@ final class CaptureManager {
         geometryLock.unlock()
     }
 
-    /// Fetch shareable displays, pumping the main run loop while waiting.
-    private func fetchShareableDisplays(timeout: TimeInterval) -> Result<[SCDisplay], CaptureFailure> {
-        var complete = false
-        var displays: [SCDisplay]?
-        var fetchError: Error?
-
-        SCShareableContent.getExcludingDesktopWindows(false, onScreenWindowsOnly: true) { content, error in
-            DispatchQueue.main.async {
-                displays = content?.displays
-                fetchError = error
-                complete = true
-            }
+    /// Wait for a ScreenCaptureKit completion handler, up to `timeout` seconds.
+    ///
+    /// Mutating commands run inside a main-queue block (CommandServer uses
+    /// DispatchQueue.main.sync), and the main queue runs one block at a time, so a
+    /// completion that hops back to main can't run until the command returns:
+    /// every wait would time out. SCK calls back on its own queue, so the result
+    /// is handed over through a lock and a semaphore instead. The run loop is
+    /// still pumped so run-loop sources (timers, display callbacks) keep firing.
+    static func awaitCallback<T>(timeout: TimeInterval,
+                                 _ start: (@escaping (T) -> Void) -> Void) -> T? {
+        let lock = NSLock()
+        var result: T?
+        let done = DispatchSemaphore(value: 0)
+        start { value in
+            lock.lock()
+            if result == nil { result = value }
+            lock.unlock()
+            done.signal()
         }
-
         let deadline = Date(timeIntervalSinceNow: timeout)
-        while !complete && Date() < deadline {
+        while done.wait(timeout: .now()) == .timedOut {
+            if Date() >= deadline { return nil }
             CFRunLoopRunInMode(.defaultMode, 0.05, true)
         }
+        lock.lock()
+        defer { lock.unlock() }
+        return result
+    }
+
+    /// Fetch shareable displays without depending on the main queue being free.
+    private func fetchShareableDisplays(timeout: TimeInterval) -> Result<[SCDisplay], CaptureFailure> {
+        let reply = Self.awaitCallback(timeout: timeout) { (done: @escaping (([SCDisplay]?, Error?)) -> Void) in
+            SCShareableContent.getExcludingDesktopWindows(false, onScreenWindowsOnly: true) { content, error in
+                done((content?.displays, error))
+            }
+        }
+        let complete = reply != nil
+        let displays = reply?.0
+        let fetchError = reply?.1
 
         if let displays, !displays.isEmpty {
             return .success(displays)
@@ -747,18 +768,11 @@ final class CaptureManager {
                                           queue: queue, videoWriter: videoWriter, geometry: geometry)
 
         // Start capture and wait for completion (pumping the run loop).
-        var startComplete = false
-        var startError: Error?
-        stream.startCapture { error in
-            DispatchQueue.main.async {
-                startError = error
-                startComplete = true
-            }
+        let startReply = Self.awaitCallback(timeout: 5.0) { (done: @escaping (Error?) -> Void) in
+            stream.startCapture { error in done(error) }
         }
-        let startDeadline = Date(timeIntervalSinceNow: 5.0)
-        while !startComplete && Date() < startDeadline {
-            CFRunLoopRunInMode(.defaultMode, 0.05, true)
-        }
+        let startComplete = startReply != nil
+        let startError: Error? = startReply ?? nil
 
         if !startComplete || startError != nil {
             let permissionLost = !DisplayManager.hasPermission() || Self.isPermissionError(startError)
@@ -791,18 +805,14 @@ final class CaptureManager {
 
     /// Stop an SCStream, drain its sample queue and finalize its video file.
     private func stopDisplayStream(_ displayStream: DisplayStream) {
-        var stopComplete = false
-        displayStream.stream.stopCapture { error in
-            if let error {
-                NSLog("[Helper] Error stopping stream for %@: %@", displayStream.displayId, error.localizedDescription)
+        let stopComplete = Self.awaitCallback(timeout: 3.0) { (done: @escaping (Bool) -> Void) in
+            displayStream.stream.stopCapture { error in
+                if let error {
+                    NSLog("[Helper] Error stopping stream for %@: %@", displayStream.displayId, error.localizedDescription)
+                }
+                done(true)
             }
-            DispatchQueue.main.async { stopComplete = true }
-        }
-
-        let deadline = Date(timeIntervalSinceNow: 3.0)
-        while !stopComplete && Date() < deadline {
-            CFRunLoopRunInMode(.defaultMode, 0.05, true)
-        }
+        } != nil
         if !stopComplete {
             NSLog("[Helper] Timeout waiting for stream stop: %@", displayStream.displayId)
         }
