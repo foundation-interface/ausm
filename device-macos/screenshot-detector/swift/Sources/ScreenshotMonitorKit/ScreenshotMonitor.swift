@@ -114,6 +114,11 @@ public final class ScreenshotMonitor: @unchecked Sendable {
         var toolbarBounds: () -> CGRect? = { ScreenCapture.screenshotToolbarBounds() }
         /// The Cmd+Shift+5 panel's remembered capture style.
         var panelStyle: () -> String? = { UserDefaults(suiteName: "com.apple.screencapture")?.string(forKey: "style") }
+        /// Whether the Cmd+Shift+5 panel is set to record video rather than take a still.
+        var panelRecordsVideo: () -> Bool = { UserDefaults(suiteName: "com.apple.screencapture")?.bool(forKey: "video") ?? false }
+        /// Whether a point is on the Screenshot agent's own small windows (the toolbar, its
+        /// Options menu), where a click is a control, not a capture.
+        var screenshotChromeAt: (CGPoint) -> Bool = { ScreenCapture.isScreenshotChrome(at: $0) }
         var captureDisplay: (CGDirectDisplayID, CGRect?, ScreenCapture.Exclusions, @escaping (CGImage?, String?) -> Void) -> Void = {
             ScreenCapture.captureDisplay($0, cropTo: $1, excluding: $2, completion: $3)
         }
@@ -463,10 +468,15 @@ public final class ScreenshotMonitor: @unchecked Sendable {
                     endSession(cancelled: true)
                 }
             case .interactive:
-                // A click (not a drag) on the right end of the Cmd+Shift+5 toolbar is the Capture button.
-                if travelled < 4, let toolbar = env.toolbarBounds(), toolbar.contains(location),
-                   location.x >= toolbar.maxX - 130 {
-                    capturePanelSelection()
+                guard travelled < 4 else { break }
+                if let toolbar = env.toolbarBounds(), toolbar.contains(location) {
+                    // A click on the right end of the Cmd+Shift+5 toolbar is the Capture button;
+                    // anywhere else on it is an option.
+                    if location.x >= toolbar.maxX - 130 { capturePanelSelection() }
+                } else if !env.screenshotChromeAt(location) {
+                    // In the "window" and "entire screen" styles the panel captures on a click:
+                    // on the window, or anywhere on the screen. ("selection" waits for Capture.)
+                    capturePanelClick(at: location)
                 }
             default:
                 break
@@ -524,6 +534,12 @@ public final class ScreenshotMonitor: @unchecked Sendable {
 
     /// Cmd+Shift+5 panel: the panel remembers its capture style in the screencapture defaults.
     private func capturePanelSelection() {
+        if env.panelRecordsVideo() {
+            // The panel is set to record: Capture starts a recording, not a still.
+            log("panel is recording video → session ends without a capture")
+            endSession(cancelled: true)
+            return
+        }
         let style = env.panelStyle() ?? "selection"
         let location = env.mouseLocation()
         if style == "window", let windowID = env.windowAt(location, exclusions()) {
@@ -535,6 +551,23 @@ public final class ScreenshotMonitor: @unchecked Sendable {
             return
         }
         captureDisplay(env.displayContaining(location), rect: nil)
+    }
+
+    /// A click outside the toolbar while the Cmd+Shift+5 panel is up.
+    private func capturePanelClick(at location: CGPoint) {
+        guard !env.panelRecordsVideo() else { return }
+        switch env.panelStyle() ?? "selection" {
+        case "window":
+            if let windowID = env.windowAt(location, exclusions()) {
+                captureWindow(windowID)
+            } else {
+                log("panel window-style click over no window → ignored")
+            }
+        case "display", "screen":
+            captureDisplay(env.displayContaining(location), rect: nil)
+        default:
+            break   // selection: a click only places or adjusts the region
+        }
     }
 
     private func captureDisplay(_ displayID: CGDirectDisplayID, rect: CGRect?) {

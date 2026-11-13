@@ -22,6 +22,8 @@ final class FakeScreenshotSystem {
     var windows: [(id: CGWindowID, bounds: CGRect)] = []
     var toolbar: CGRect?
     var style: String?
+    var video = false
+    var chrome: [CGRect] = []
     /// When false, capture completions are parked in `pending` until the test releases them.
     var autoComplete = true
     var captureError: String?
@@ -81,6 +83,8 @@ final class FakeScreenshotSystem {
         env.windowBounds = { [unowned self] id in self.windows.first { $0.id == id }?.bounds }
         env.toolbarBounds = { [unowned self] in self.toolbar }
         env.panelStyle = { [unowned self] in self.style }
+        env.panelRecordsVideo = { [unowned self] in self.video }
+        env.screenshotChromeAt = { [unowned self] p in self.chrome.contains { $0.contains(p) } }
         env.captureDisplay = { [unowned self] id, rect, _, completion in
             self.lock.lock(); self.displayRequests.append((id, rect)); self.lock.unlock()
             let d = self.displays.first { $0.id == id } ?? self.displays[0]
@@ -568,6 +572,64 @@ final class ScreenshotMonitorSessionTests: XCTestCase {
         mouse(.leftMouseUp, 950, 820)
         waitForEnded()
         XCTAssertEqual(sys.requestCount, 1)
+    }
+
+    func testPanelWindowStyleClickCapturesClickedWindow() {
+        // Regression: in the window style the panel captures on a click on the window, with no
+        // Capture button or Return; the session used to hang until the timeout.
+        sys.style = "window"
+        sys.toolbar = CGRect(x: 400, y: 800, width: 600, height: 60)
+        sys.windows = [(id: 710, bounds: CGRect(x: 0, y: 0, width: 300, height: 300))]
+        start()
+        begin(pid: 30, ["-pdiU", "-z", "keyboard.interactive"])
+        mouse(.leftMouseDown, 500, 820)  // a toolbar option
+        mouse(.leftMouseUp, 500, 820)
+        mouse(.leftMouseDown, 600, 600)  // over no window
+        mouse(.leftMouseUp, 600, 600)
+        XCTAssertEqual(sys.requestCount, 0)
+        mouse(.leftMouseDown, 50, 50)
+        mouse(.leftMouseUp, 50, 50)
+        waitForEnded()
+        XCTAssertEqual(sys.windowRequests, [710])
+    }
+
+    func testPanelDisplayStyleClickCapturesThatDisplay() {
+        sys.style = "display"
+        start()
+        begin(pid: 31, ["-pdiU", "-z", "keyboard.interactive"])
+        mouse(.leftMouseDown, -100, 100)
+        mouse(.leftMouseUp, -100, 100)
+        waitForEnded()
+        XCTAssertEqual(sys.displayRequests.first?.0, 2)
+        XCTAssertNil(sys.displayRequests.first?.1 ?? nil)
+    }
+
+    func testPanelClicksOnChromeOrInSelectionStyleDoNotCapture() {
+        sys.style = "window"
+        sys.chrome = [CGRect(x: 0, y: 0, width: 200, height: 200)]   // the Options menu
+        sys.windows = [(id: 720, bounds: CGRect(x: 0, y: 0, width: 300, height: 300))]
+        start()
+        begin(pid: 32, ["-pdiU", "-z", "keyboard.interactive"])
+        mouse(.leftMouseDown, 50, 50)
+        mouse(.leftMouseUp, 50, 50)
+        sys.style = "selection"
+        mouse(.leftMouseDown, 250, 250)
+        mouse(.leftMouseUp, 250, 250)
+        XCTAssertEqual(sys.requestCount, 0)
+        XCTAssertFalse(types().contains("screencapture_ended"))
+    }
+
+    func testPanelInVideoModeNeverCaptures() {
+        sys.style = "display"
+        sys.video = true
+        start()
+        begin(pid: 33, ["-pdiU", "-z", "keyboard.interactive"])
+        mouse(.leftMouseDown, 50, 50)
+        mouse(.leftMouseUp, 50, 50)
+        XCTAssertEqual(sys.requestCount, 0)
+        key(36)
+        waitForEnded()
+        XCTAssertEqual(sys.requestCount, 0)
     }
 
     func testSpaceDoesNotToggleWindowModeInPanel() {
