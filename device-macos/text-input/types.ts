@@ -43,6 +43,8 @@ export interface TextInputEventLike {
     sourceElement?: TextInputSourceElement | null;
     status?: TextInputStatusLike | null;
     caretScreenPosition?: Point | null;
+    /** `text` was cut at `maxTextLength` characters. */
+    textTruncated?: boolean;
 }
 
 /**
@@ -58,6 +60,7 @@ export interface NativeTextInputEvent {
     timestamp?: number;
     sourceElement?: TextInputSourceElement | null;
     caretScreenPosition?: Point | null;
+    textTruncated?: boolean;
 }
 
 export interface TextInputMonitorConfig {
@@ -70,6 +73,8 @@ export interface TextInputMonitorConfig {
     autoRestart?: boolean;
     /** Override the helper executable path (default: the bundled helper). */
     helperPath?: string;
+    /** Cap on `text` in characters (default: 100 000); longer values are cut and flagged with `textTruncated`. */
+    maxTextLength?: number;
 }
 
 /** Accessibility permission state reported by the helper at startup and on every change. */

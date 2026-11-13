@@ -27,6 +27,9 @@ public struct TextInputEvent: Codable, Sendable, Equatable {
     public let caretScreenPosition: PointJSON?
     /// Milliseconds since 1970.
     public let timestamp: Double
+    /// `text` was cut at `TextInputMonitor.Options.maxTextLength` characters (nil = not cut,
+    /// omitted on the wire).
+    public let textTruncated: Bool?
 
     public struct SourceElement: Codable, Sendable, Equatable {
         /// AX role (`AXTextField`, `AXTextArea`, `AXComboBox`).
@@ -80,12 +83,13 @@ public struct TextInputEvent: Codable, Sendable, Equatable {
     }
 
     public init(status: TextInputStatus, text: String?, sourceElement: SourceElement?,
-                caretScreenPosition: PointJSON?, timestamp: Double) {
+                caretScreenPosition: PointJSON?, timestamp: Double, textTruncated: Bool? = nil) {
         self.status = status
         self.text = text
         self.sourceElement = sourceElement
         self.caretScreenPosition = caretScreenPosition
         self.timestamp = timestamp
+        self.textTruncated = textTruncated
     }
 
     public var date: Date { Date(timeIntervalSince1970: timestamp / 1000) }
@@ -133,6 +137,15 @@ public enum TextInputPolicy {
     public static func isTrackable(role: String?, subrole: String?) -> Bool {
         guard let role, editableRoles.contains(role) else { return false }
         return !isSecure(role: role, subrole: subrole)
+    }
+
+    /// Cut `text` to at most `maxLength` characters (grapheme clusters, so never mid-character).
+    /// `maxLength <= 0` disables the cap. Returns the text and whether it was cut.
+    public static func truncate(_ text: String?, maxLength: Int) -> (text: String?, truncated: Bool) {
+        guard let text, maxLength > 0,
+              let end = text.index(text.startIndex, offsetBy: maxLength, limitedBy: text.endIndex),
+              end < text.endIndex else { return (text, false) }
+        return (String(text[..<end]), true)
     }
 
     /// How far up the AX hierarchy focus may have landed inside a text input.

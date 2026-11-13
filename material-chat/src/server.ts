@@ -6,6 +6,9 @@
  *   AUSM_DB                 path to ausm-materials.db
  *   AUSM_PORT               default 8788
  *   MATERIAL_CHAT_DATA_DIR  sessions / prefs
+ *   MATERIAL_CHAT_ALLOWED_ORIGINS  extra browser origins allowed to call it (comma-separated)
+ *
+ * Listens on 127.0.0.1 only; see local-only.ts.
  */
 
 import { serve } from "@hono/node-server";
@@ -24,8 +27,8 @@ const shutdown = () => {
 process.on("SIGINT", shutdown);
 process.on("SIGTERM", shutdown);
 
-serve({ fetch: app.fetch, port: config.port }, (info) => {
-  console.error(`[material-chat] listening on http://localhost:${info.port}`);
+serve({ fetch: app.fetch, port: config.port, hostname: "127.0.0.1" }, (info) => {
+  console.error(`[material-chat] listening on http://127.0.0.1:${info.port}`);
   console.error(`[material-chat] db: ${config.dbPath}`);
   const s = memory.stats();
   console.error(

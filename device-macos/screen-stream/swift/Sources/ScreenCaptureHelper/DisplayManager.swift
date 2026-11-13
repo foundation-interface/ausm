@@ -222,7 +222,12 @@ final class DisplayManager {
             { _, info in
                 guard let info else { return }
                 let mgr = Unmanaged<DisplayManager>.fromOpaque(info).takeUnretainedValue()
-                mgr.detectDisplayChanges()
+                // Run as a main-queue block (like commands): handling a change can pump the run loop
+                // in awaitCallback, which from a bare timer callback would drain other main-queue
+                // blocks (commands, shutdown) re-entrantly.
+                DispatchQueue.main.async { [weak mgr] in
+                    mgr?.detectDisplayChanges()
+                }
             },
             &context
         ) {

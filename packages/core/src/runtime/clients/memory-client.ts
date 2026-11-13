@@ -118,6 +118,8 @@ export class MemoryClient {
         this.process.stderr?.on('data', (chunk: string) => {
             process.stderr.write(chunk);
         });
+        // EPIPE when the child dies mid-write must not crash the host; 'exit' handles the failure.
+        this.process.stdin?.on('error', () => {});
 
         let stdoutBuffer = '';
         this.process.stdout?.setEncoding('utf-8');
@@ -188,6 +190,15 @@ export class MemoryClient {
 
         try {
             await this.readyPromise;
+        } catch (err) {
+            // Startup failed or timed out: don't leave a half-started child behind.
+            const proc = this.process;
+            this.process = null;
+            this.readyPromise = null;
+            this.readyResolve = null;
+            this.readyReject = null;
+            proc?.kill('SIGKILL');
+            throw err;
         } finally {
             clearTimeout(timeout);
         }
@@ -201,6 +212,7 @@ export class MemoryClient {
         this.readyReject = null;
 
         if (!proc) return;
+        if (proc.exitCode !== null || proc.signalCode !== null) return; // already exited
 
         const stopTimeoutMs = this.options.stopTimeoutMs ?? 5000;
         return new Promise<void>((resolve) => {

@@ -59,7 +59,7 @@ export interface StreamConfig {
   fps?: number;
   /** Capture height in pixels, width scales proportionally (0 = native). */
   targetHeight?: number;
-  /** Also record each display to `${outputDirectory}/display-<id>.mp4`. */
+  /** Also record each display to `${outputDirectory}/display-<id>-<yyyyMMdd-HHmmss-SSS>.mp4` (one file per capture segment). */
   enableRecording?: boolean;
   outputDirectory?: string;
   /** Base POSIX shm name, e.g. "/ausm-frames" (max 22 bytes). Empty disables SHM output. */

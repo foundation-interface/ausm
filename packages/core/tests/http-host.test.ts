@@ -62,7 +62,7 @@ describe('HttpHost', () => {
         assert.deepEqual(opts.stdio, ['ignore', 'pipe', 'pipe']);
         assert.equal(opts.env.AUSM_DB, '/tmp/test.db');
         assert.equal(opts.env.AUSM_PORT, '9911');
-        assert.equal(opts.env.AUSM_URL, 'http://127.0.0.1:9911');
+        assert.equal(opts.env.AUSM_URL, undefined, 'material-chat no longer reads AUSM_URL');
         assert.equal(opts.env.MATERIAL_CHAT_DATA_DIR, '/tmp/mc-data');
         assert.equal(opts.env.PATH.split(path.delimiter)[0], '/fake/bin');
         assert.ok(String(opts.env.NODE_PATH).includes('node_modules'));

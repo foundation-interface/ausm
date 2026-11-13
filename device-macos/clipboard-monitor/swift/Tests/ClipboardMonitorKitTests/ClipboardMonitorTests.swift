@@ -16,8 +16,12 @@ final class FakePasteboard: PasteboardReading {
         return types.first(where: present.contains)
     }
 
+    /// Runs during a content read (to simulate a copy racing the poll).
+    var onRead: (() -> Void)?
+
     func readContent(ofType type: String) -> (content: String?, paths: [String]?) {
         reads.append(type)
+        if let hook = onRead { onRead = nil; hook() }
         let c = contents[type]
         return (c?.0 ?? nil, c?.1 ?? nil)
     }
@@ -58,6 +62,23 @@ final class ClipboardMonitorTests: XCTestCase {
         let m = makeMonitor()
         m.poll()
         XCTAssertTrue(events.isEmpty)
+    }
+
+    func testChangeDuringReadIsDroppedAndNextPollReportsNewItem() {
+        let m = makeMonitor()
+        board.copy(["public.utf8-plain-text"], ["public.utf8-plain-text": ("abc", nil)])
+        // A concealed item lands between the concealed check and the content read.
+        board.onRead = { [unowned self] in
+            self.board.copy(["org.nspasteboard.ConcealedType", "public.utf8-plain-text"],
+                            ["public.utf8-plain-text": ("secret", nil)])
+        }
+        m.poll()
+        XCTAssertTrue(events.isEmpty, "a result read across a change is dropped")
+        m.poll()
+        XCTAssertEqual(events.count, 1)
+        XCTAssertEqual(events[0].changeCount, 2)
+        XCTAssertTrue(events[0].concealed)
+        XCTAssertNil(events[0].content)
     }
 
     func testNoChangeNoEvent() {

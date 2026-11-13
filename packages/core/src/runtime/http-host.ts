@@ -18,6 +18,8 @@ export interface HttpHostOptions {
     materialChat?: {
         enabled?: boolean;
         dataDir?: string;
+        /** Browser origins besides localhost and file:// allowed to call the host (e.g. 'app://my-app'). */
+        allowedOrigins?: string[];
     };
 }
 
@@ -47,7 +49,6 @@ export class HttpHost {
             PATH: prependPath(process.env.PATH, path.dirname(nodePath)),
             AUSM_DB: dbPath,
             AUSM_PORT: String(port),
-            AUSM_URL: `http://127.0.0.1:${port}`,
         };
         const nodePathExtra = collectNodePath(cwd);
         if (nodePathExtra) {
@@ -55,6 +56,9 @@ export class HttpHost {
         }
         if (this.options.materialChat?.dataDir) {
             env.MATERIAL_CHAT_DATA_DIR = this.options.materialChat.dataDir;
+        }
+        if (this.options.materialChat?.allowedOrigins?.length) {
+            env.MATERIAL_CHAT_ALLOWED_ORIGINS = this.options.materialChat.allowedOrigins.join(',');
         }
 
         console.log(`[AUSM] Starting HTTP host: ${nodePath} ${args.join(' ')} (cwd=${cwd})`);

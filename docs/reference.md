@@ -67,7 +67,7 @@ flowchart TD
 
 ---
 
-`initialize()` order: screen → camera → sensors → memory → HTTP host (if `http.enabled` or `materialChat.enabled`) → materials → cursor++ → load `detectors/` → pipeline (skips first 2500 ms of viewport census). Pipeline needs a Vertex `projectId` or `CEREBRAS_API_KEY`; missing optionals warn and continue.
+`initialize()` order: screen → camera → sensors → memory → HTTP host (if `http.enabled` or `materialChat.enabled`) → materials → cursor++ → load `detectors/` → pipeline (skips first 2500 ms of viewport census). Pipeline needs a configured model (Vertex `projectId`, `CEREBRAS_API_KEY`, or an `apiBaseUrl`); missing optionals warn and continue, except Material Chat, whose start failure rejects `initialize()`.
 
 ## Map
 
@@ -110,9 +110,9 @@ runtime.onTaskEvent((e) => { /* ... */ });
 runtime.shutdown();
 ```
 
-Prefer `createRuntime()`. `ausmRuntime` is a singleton (selection on, frequency logs on). Full config: `AUSMRuntimeConfig`.
+Prefer `createRuntime()`. `ausmRuntime` is a singleton (selection on). Full config: `AUSMRuntimeConfig`.
 
-**On by default (darwin):** text-selection, screenshot, clipboard, viewport, detector scan. **Off unless set:** screen stream, camera, text-input, material-manager, cursor++, memory OCR, Material Chat HTTP host. Pipeline runs if Vertex `projectId` or `CEREBRAS_API_KEY` is set (`TASK_DETECTOR_PROVIDER` or auto: Cerebras when only an API key is present). Memory DB is `materialManager.dbPath` (default `:memory:`). Material Chat is a child process on port `8788` (`http.port`); set `materialChat.dataDir` for session/prefs. Do not start the `material-chat` bin by hand on the product path.
+**On by default (darwin):** text-selection, screenshot, clipboard, viewport, detector scan. **Off unless set:** screen stream, camera, text-input, material-manager, cursor++, memory OCR, Material Chat HTTP host. Pipeline runs if Vertex `projectId` or `CEREBRAS_API_KEY` is set (`TASK_DETECTOR_PROVIDER` or auto: Cerebras when only an API key is present). Memory DB is `materialManager.dbPath` (default `:memory:`). Material Chat is a child process on `127.0.0.1:8788` (`http.port`); set `materialChat.dataDir` for session/prefs and a real `materialManager.dbPath`. It answers only requests without an `Origin` or from localhost / `file://` pages; add other renderer origins with `materialChat.allowedOrigins`. Do not start the `material-chat` bin by hand on the product path.
 
 | Subscribe | Event |
 |---|---|
@@ -127,7 +127,7 @@ Prefer `createRuntime()`. `ausmRuntime` is a singleton (selection on, frequency 
 | `onDetectorEvent` | `DetectorEvent` |
 | `onTaskEvent` | `TaskEvent` (`event: task` / `rapid-task` only) |
 
-Callbacks are additive; `shutdown()` does not clear them. Matching `emit*Event` methods exist for tests.
+Callbacks are additive; each `on*` returns an unsubscribe function, and `shutdown()` does not clear them. Matching `emit*Event` methods exist for tests.
 
 Queries after init: `getScreenDisplays`, `captureLatestScreenFrame`, `getCameraDevices`, `captureLatestCameraFrame`, `getMaterials`, `getMaterialLatestFrame` / `Frames` / `Content` / `Weights`, `getScreenshots` / `getScreenshot`, `freezeMemory` / `unfreezeMemory`. Stubs (empty): `getImmediateContext`, `getRelevantMaterials`, `getScreenshotImageData`, `getCoveredMaterials`, `getBounds`, `getActiveMaterialWindows`.
 
@@ -142,8 +142,8 @@ Queries after init: `getScreenDisplays`, `captureLatestScreenFrame`, `getCameraD
 | `screenshot` | `ScreenShotEvent.ts` | image on `SCREENSHOT_FINISHED` only |
 | `windowState` | `WindowStateEvent.ts` | `APPEAR` `FOCUSED` `UNFOCUSED` `VANISHED` `TITLE_CHANGED` `BOUNDS_CHANGED` |
 | `copyPaste` | `CopyPasteEvent.ts` | `COPY` / `PASTE` |
-| `material` | `MaterialEvent.ts` | `CREATED` `FOCUSED` `UNFOCUSED` `FRAME_CAPTURED` `CONTENT_UPDATED`; `TYPE_CLASSIFIED` wired but unused |
-| `cursorPlusPlus` | `CursorPlusPlusEvent.ts` | `MOVE` `CLICK` `SCROLL` `HOLD_*` `DRAG` |
+| `material` | `MaterialEvent.ts` | `MATERIAL_CREATED` `MATERIAL_FOCUSED` `MATERIAL_UNFOCUSED` `FRAME_CAPTURED` `MATERIAL_CONTENT_UPDATED`; `MATERIAL_TYPE_CLASSIFIED` wired but unused |
+| `cursorPlusPlus` | `CursorPlusPlusEvent.ts` | `MOVE` `CLICK` `DOUBLE_CLICK` `RIGHT_CLICK` `SCROLL` `HOLD_START` `HOLD_END` `DRAG` |
 | `spaceChange` | `SpaceChangeEvent.ts` | |
 | `detector` | `detectors/types.ts` | `summary`, `evidence`, `suggestedDetectors` |
 | `task` | `TaskEvent.ts` | `TASK_DETECTED` / `UPDATED` / `COMPLETED` |
@@ -152,17 +152,17 @@ A `WindowTracker` is per `windowId`; a `Material` is a tab inside that window if
 
 ## Detectors
 
-`DetectorManager` loads `detectors/` next to the `@ausm/core` package (shipped `packages/core/detectors/rapid-task`), then walks up from `__dirname`, then `detectors.extraDirs`. Each child dir needs `DETECTOR.md` (max 256 KB). Reload on next `initialize()`.
+`DetectorManager` loads `detectors/` next to the `@ausm/core` package (shipped `packages/core/detectors/rapid-task`), then walks up from `__dirname`, then `detectors.extraDirs`. Each child dir needs `DETECTOR.md` (max 256 KB). Loaded once per runtime instance; create a new runtime to pick up edited detectors.
 
 ```yaml
 ---
 name: my-detector          # required
 description: one line      # required
 event: my-event            # required; `task` → TaskTracker
-cooldown: 10000
-interval: 10000            # default = cooldown
-debounce: 5000             # default interval/2
-trigger: interval          # interval | screen
+cooldown: 10000            # ms quiet after firing
+interval: 10000            # min ms between checks; default = cooldown
+debounce: 5000             # max ms from new activity to a check; default interval/2
+trigger: interval          # `screen` is parsed but not scheduled yet
 enabled: true
 sources: [screen, events]
 events: [material, window-state, text-input, text-selection, copy-paste, cursor, screenshot]
@@ -172,6 +172,8 @@ dispatchOnly: false        # only if another detector suggests it
 Natural-language spec (model body).
 ```
 
+YAML comments (`# …`) are ignored. `detectors.entries.<name>.enabled: false` disables a detector from config (it can't force-enable one whose file says `false`); `detectors.enabled: false` turns detectors off.
+
 `rapid-task` is `isolated`, always classifies. `TaskTracker` maps `begin|continue|update|end|switch` onto one current task id.
 
 Pipeline: focused-material JPEG + compact events → `VertexDetectorClient` or `CerebrasDetectorClient`. Wire types: `text-input`, `window-state`, `text-selection`, `material`, `cursor`, `copy-paste`, `screenshot`. Shared prompt/schema: `packages/detector-pipeline/prompts.ts`.
@@ -180,6 +182,9 @@ Pipeline: focused-material JPEG + compact events → `VertexDetectorClient` or `
 |---|---|---|---|
 | `vertex` | ADC (`gcloud auth application-default login`) + `TASK_DETECTOR_PROJECT_ID` | `gemini-2.0-flash` | `vertex-client.ts` |
 | `cerebras` | `CEREBRAS_API_KEY` (OpenAI-compatible, `https://api.cerebras.ai/v1`) | `gemma-4-31b` | `cerebras-client.ts` |
+| `cerebras` + `apiBaseUrl` | any OpenAI-compatible server, e.g. Ollama `http://localhost:11434/v1`; key optional for a non-Cerebras URL | set `model` | `cerebras-client.ts` |
+
+The model must accept `image_url` parts (the focused frame, JPEG, longest side 768 px) and `response_format: json_object`. A text-only model fails every evaluation.
 
 ## Memory
 
@@ -203,7 +208,7 @@ Default preload = `window.ausm` only. Host extras: `exposeAUSM()` from `/preload
 
 ## Setup
 
-macOS 13+, Xcode CLI Tools, Node ≥ 18, Swift ≥ 5.9, Python ≥ 3.10.
+macOS 13+, Xcode CLI Tools, Node ≥ 18, Swift ≥ 5.9, Python ≥ 3.9.
 
 Permissions (Terminal **and** Electron.app): Screen Recording, Accessibility, Camera (if streaming).
 
@@ -223,8 +228,8 @@ cp .env.example .env     # optional
 | `TASK_DETECTOR_PROVIDER` | `vertex` (or `cerebras` if only `CEREBRAS_API_KEY` is set) | `vertex` \| `cerebras` |
 | `TASK_DETECTOR_PROJECT_ID` | — | Vertex; or `AUSM_DETECTOR_PROJECT_ID` |
 | `TASK_DETECTOR_LOCATION` | `global` | Vertex region |
-| `CEREBRAS_API_KEY` | — | Cerebras |
-| `CEREBRAS_BASE_URL` | `https://api.cerebras.ai/v1` | |
+| `CEREBRAS_API_KEY` | — | Cerebras; optional for a local `CEREBRAS_BASE_URL` |
+| `CEREBRAS_BASE_URL` | `https://api.cerebras.ai/v1` | any OpenAI-compatible server |
 | `TASK_DETECTOR_MODEL` | `gemini-2.0-flash` / `gemma-4-31b` | per provider |
 
 ```bash
@@ -239,7 +244,7 @@ npm run typecheck && npm run clean
 | `better_sqlite3.node` / MM unavailable | `npm rebuild better-sqlite3`; Electron: `materialManager.nodePath` |
 | No frames | Screen Recording on the **host binary**; codesign helper |
 | No AX events | Accessibility; restart host |
-| No `TaskEvent` | Vertex project + ADC, or `CEREBRAS_API_KEY`; materials + screen stream on |
+| No `TaskEvent` | Vertex project + ADC, `CEREBRAS_API_KEY`, or a local `apiBaseUrl` with a vision model; materials + screen stream on |
 | Setup but no cursor/screenshot/clipboard | `npm run build` |
 
 ## Change map
@@ -280,7 +285,7 @@ Host install:
 npm install ausm
 ```
 
-macOS helpers ship as prebuilt binaries in each device package. Text-selection compiles on install unless `prebuilds/` were generated (`npm run build:prebuilds` in that package before publish). Frame crop / OCR still need Python (`numpy`, and `pip install -r packages/core/src/memory/py/requirements.txt` for OCR).
+macOS helpers ship as prebuilt binaries in each device package. Text-selection compiles on install unless `prebuilds/` were generated (`npm run build:prebuilds` in that package before publish). Frame crop needs Python with `pip install -r device-macos/material-manager/py/requirements.txt` (numpy, opencv-python-headless, pyobjc Vision/Quartz; shipped in `@ausm/device-macos-material-manager`), and OCR also `packages/core/src/memory/py/requirements.txt`.
 
 ## License
 

@@ -49,6 +49,15 @@ test('helper lines map to text-input events with every field', () => {
     for (const e of events) assert.match(e.eventID ?? '', /^txt_\d+_[a-z0-9]+$/);
 });
 
+test('textTruncated is passed through only when true', () => {
+    const { events } = feed([
+        JSON.stringify({ status: 'TEXT_EDITING_UPDATED', text: 'a', textTruncated: true }),
+        JSON.stringify({ status: 'TEXT_EDITING_UPDATED', text: 'b' }),
+    ]);
+    assert.equal(events[0].textTruncated, true);
+    assert.equal('textTruncated' in events[1], false);
+});
+
 test('text round-trips: empty, emoji, RTL, CJK, combining marks, control characters, 2 MiB', () => {
     for (const [name, text] of Object.entries(tricky)) {
         const { events } = feed([JSON.stringify({ status: 'TEXT_EDITING_UPDATED', text })]);

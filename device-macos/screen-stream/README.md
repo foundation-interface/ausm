@@ -67,7 +67,7 @@ The npm package ships a copy at `python/screen-stream-reader` (add it to
 | `targetHeight` | 0–16384 | 1080 | Capture height in pixels (0 = native); width keeps aspect, both rounded up to even |
 | `sharedMemoryName` | valid shm name, ≤ 22 bytes | `/ausm-frames` | Base name; `""` disables SHM output |
 | `frameCount` | 1–120 | 5 | Ring slots per display |
-| `enableRecording` / `outputDirectory` | | false / `""` | Also write `<dir>/display-<id>.mp4` (H.264) |
+| `enableRecording` / `outputDirectory` | | false / `""` | Also write `<dir>/<displayId>-<yyyyMMdd-HHmmss-SSS>.mp4` (H.264); a new file per segment, so a display change never overwrites one |
 | `socketPath` | ≤ 96 bytes | `/tmp/ausm-frames.sock` | Command socket; notifications on `<socketPath>.notify` |
 
 Invalid values are ignored (the response lists them in `rejected`).

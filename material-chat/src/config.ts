@@ -1,4 +1,3 @@
-import { existsSync } from "node:fs";
 import path from "node:path";
 import os from "node:os";
 
@@ -21,12 +20,12 @@ function port(name: string, fallback: number): number {
 
 const defaultDataDir = path.join(
   os.homedir(),
-  "Library/Application Support/activity-visualizer/material-chat",
+  "Library/Application Support/ausm/material-chat",
 );
 
 const defaultDbPath = path.join(
   os.homedir(),
-  "Library/Application Support/activity-visualizer/ausm-materials.db",
+  "Library/Application Support/ausm/ausm.db",
 );
 
 export const config = {
@@ -50,8 +49,13 @@ export const config = {
     return path.join(this.dataDir, "preferences.md");
   },
 
+  /** Browser origins besides localhost and file:// that may call the server. */
+  allowedOrigins: (process.env.MATERIAL_CHAT_ALLOWED_ORIGINS ?? "")
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean),
+
   materialUrlScheme: str("MATERIAL_URL_SCHEME", "material://"),
-  ausmUrl: str("AUSM_URL", "http://127.0.0.1:8788"),
 
   userName: process.env.USER_NAME ?? "",
   userAliases: (process.env.USER_ALIASES ?? "")
@@ -62,16 +66,5 @@ export const config = {
   timezone: process.env.TIMEZONE ?? "",
   defaultPipeline: 1,
 
-  plannerModel: str("PLANNER_MODEL", "claude-haiku-4-5-20251001"),
   synthModel: str("SYNTH_MODEL", "claude-sonnet-4-6"),
-
-  personalTopK: int("PERSONAL_TOP_K", 5),
-  webTopK: int("WEB_TOP_K", 5),
-  webFetchTopK: int("WEB_FETCH_TOP_K", 3),
 };
-
-export function ensureDataDir(): void {
-  if (!existsSync(config.dataDir)) {
-    // created lazily by the session store
-  }
-}

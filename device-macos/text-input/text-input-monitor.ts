@@ -74,6 +74,7 @@ export class TextInputMonitorService extends EventEmitter {
     private running = false;
     private debug = false;
     private autoRestart = true;
+    private maxTextLength: number | undefined;
     private restartAttempts = 0;
     private restartTimer: NodeJS.Timeout | null = null;
     private spawnedAt = 0;
@@ -86,6 +87,7 @@ export class TextInputMonitorService extends EventEmitter {
     start(config?: TextInputMonitorConfig): boolean {
         this.debug = config?.debug ?? false;
         this.autoRestart = config?.autoRestart ?? true;
+        this.maxTextLength = config?.maxTextLength;
 
         if (this.running) {
             this.logDebug('Text input monitor already running');
@@ -127,7 +129,11 @@ export class TextInputMonitorService extends EventEmitter {
         let child: ChildProcess;
         try {
             // stdin is a pipe that we never write to: the helper exits on EOF if we die.
-            child = spawn(binary, [], { stdio: ['pipe', 'pipe', 'pipe'] });
+            const args: string[] = [];
+            if (this.maxTextLength && this.maxTextLength > 0) {
+                args.push('--max-text-length', String(Math.floor(this.maxTextLength)));
+            }
+            child = spawn(binary, args, { stdio: ['pipe', 'pipe', 'pipe'] });
         } catch (err) {
             this.handleError(`Failed to start helper: ${(err as Error).message}`);
             return false;
@@ -315,6 +321,7 @@ export class TextInputMonitorService extends EventEmitter {
             status: data.status,
             caretScreenPosition: data.caretScreenPosition ?? null,
         };
+        if (data.textTruncated === true) payload.textTruncated = true;
 
         this.emit('text-input', payload);
         this.logDebug(`text-input: status=${payload.status} text=${describeText(payload.text)}`);

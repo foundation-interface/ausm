@@ -19,15 +19,6 @@ export {
     type LatestFrameResult,
 } from './src/helper-client';
 
-export type {
-    FrameMetadata,
-    SharedMemoryConfig,
-    StreamStatus,
-    FrameEvent,
-    SocketMessage,
-    ScreenStreamingEvents,
-} from './types';
-
 import {
     HelperClient,
     type StreamConfig,

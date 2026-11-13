@@ -103,6 +103,22 @@ describe('detector pipeline config resolution', () => {
         assert.ok(out.warnings.some((w) => w.includes('no CEREBRAS_API_KEY')));
     });
 
+    test('a non-Cerebras base URL alone selects a keyless OpenAI-compatible endpoint', async () => {
+        process.env.CEREBRAS_BASE_URL = 'http://localhost:11434/v1';
+        const c = await startPipeline(make());
+        assert.ok(c);
+        assert.equal(c.options.provider, 'cerebras');
+        assert.equal(c.options.apiKey, '');
+        assert.equal(c.options.apiBaseUrl, 'http://localhost:11434/v1');
+    });
+
+    test('the hosted Cerebras base URL without a key stays off', async () => {
+        process.env.CEREBRAS_BASE_URL = 'https://api.cerebras.ai/v1/';
+        assert.equal(await startPipeline(make()), undefined);
+        assert.equal(await startPipeline(make({ detectorPipeline: { provider: 'cerebras', enabled: true } })), undefined);
+        assert.ok(out.warnings.some((w) => w.includes('no CEREBRAS_API_KEY')));
+    });
+
     test('enabled:true without credentials warns and does not start', async () => {
         assert.equal(await startPipeline(make({ detectorPipeline: { enabled: true } })), undefined);
         assert.ok(out.warnings.some((w) => w.includes('no projectId')));
@@ -320,6 +336,22 @@ describe('detector and task wiring', () => {
         assert.equal(c.pushes.length, 2, 'unfocused material is no longer forwarded');
     });
 
+    test('the per-material frame cache keeps only the most recent materials', async () => {
+        mock.timers.enable({ apis: ['Date', 'setTimeout'], now: 5_000_000 });
+        const { rt, c } = await wired();
+        (rt as any).materialDetector.start();
+        mock.timers.tick(2500);
+        for (let i = 0; i < 9; i++) {
+            rt.emitMaterialEvent({ materialEventType: MaterialEventType.FRAME_CAPTURED, materialId: `m${i}`, frameDataBase64: `F${i}` });
+        }
+        rt.emitMaterialEvent({ materialEventType: MaterialEventType.MATERIAL_FOCUSED, materialId: 'm8' });
+        rt.emitMaterialEvent({ materialEventType: MaterialEventType.FRAME_CAPTURED, materialId: 'm8' });
+        rt.emitMaterialEvent({ materialEventType: MaterialEventType.MATERIAL_FOCUSED, materialId: 'm0' });
+        rt.emitMaterialEvent({ materialEventType: MaterialEventType.FRAME_CAPTURED, materialId: 'm0' });
+        await new Promise((r) => setImmediate(r));
+        assert.deepEqual(c.frames, ['F8'], 'm8 is cached; m0 was evicted');
+    });
+
     test('cursor events: only discrete actions are forwarded', async () => {
         mock.timers.enable({ apis: ['Date', 'setTimeout'], now: 5_000_000 });
         const { rt, c } = await wired();
@@ -401,8 +433,11 @@ describe('initialize and shutdown', () => {
         try {
             const rt = make({ materialChat: { enabled: true } });
             await assert.rejects(rt.initialize());
+            assert.equal(stubs.memoryClients[0].stopped, 1, 'what started before the failure is stopped');
+            assert.equal((rt as any).internalUnsubs.length, 0);
             await rt.initialize();
             assert.equal(attempts, 2);
+            assert.equal((rt as any).screenshotDetector.callbacks.length, 1, 'memory callback wired once');
         } finally {
             hostProto.start = realStart;
         }
@@ -450,6 +485,37 @@ describe('initialize and shutdown', () => {
         assert.equal(stubs.pipelineClients.length, 0, 'pipeline not started after shutdown');
         assert.equal(stubs.memoryClients[0].stopped, 1, 'memory client started late is stopped');
         assert.equal((rt as any).memoryClient, null);
+    });
+
+    test('initialize → shutdown → initialize does not duplicate internal callbacks', async () => {
+        process.env.TASK_DETECTOR_PROJECT_ID = 'p';
+        const rt = make();
+        const counts = () => ['screenshotDetector', 'textInputDetector', 'applicationStateDetector', 'materialDetector', 'cursorPlusPlusDetector']
+            .map((d) => (rt as any)[d].callbacks.length);
+        await rt.initialize();
+        const first = counts();
+        rt.shutdown();
+        assert.deepEqual(counts(), [0, 0, 0, 0, 0]);
+        await rt.initialize();
+        assert.deepEqual(counts(), first);
+    });
+
+    test('HTTP host without materialManager.dbPath warns once', async () => {
+        const hostProto = (await import('../src/runtime/http-host')).HttpHost.prototype as any;
+        const realStart = hostProto.start;
+        hostProto.start = async () => 'http://127.0.0.1:1';
+        try {
+            const rt = make({ http: { enabled: true } });
+            await rt.initialize();
+            rt.shutdown();
+            await rt.initialize();
+            assert.equal(out.warnings.filter((w) => w.includes('materialManager.dbPath')).length, 1);
+            const withDb = make({ http: { enabled: true }, materialManager: { dbPath: '/tmp/x.db' } });
+            await withDb.initialize();
+            assert.equal(out.warnings.filter((w) => w.includes('materialManager.dbPath')).length, 1);
+        } finally {
+            hostProto.start = realStart;
+        }
     });
 
     test('calling initialize twice concurrently initializes once', async () => {
@@ -545,9 +611,35 @@ describe('query methods and subscriptions', () => {
         assert.deepEqual(got, ['ok', 'ok2']);
     });
 
+    test('subscription methods return a function that unsubscribes', () => {
+        const rt = make();
+        (rt as any).textSelectionDetector.running = true;
+        const got: string[] = [];
+        const offSel = rt.onTextSelectionEvent(() => got.push('selection'));
+        const offTask = rt.onTaskEvent(() => got.push('task'));
+        rt.emitTextSelectionEvent({ selectedText: 'a' });
+        rt.emitTaskEvent({});
+        offSel();
+        offTask();
+        offTask();
+        rt.emitTextSelectionEvent({ selectedText: 'b' });
+        rt.emitTaskEvent({});
+        assert.deepEqual(got, ['selection', 'task']);
+    });
+
+    test('event frequency counts an emitted event once', () => {
+        const rt = make({ logging: { eventFrequency: true } });
+        (rt as any).textSelectionDetector.running = true;
+        rt.emitTextSelectionEvent({ selectedText: 'z' });
+        rt.emitTaskEvent({});
+        const counts = (rt as any).frequencyMonitor.counts as Map<string, number>;
+        assert.equal(counts.get('textSelection'), 1);
+        assert.equal(counts.get('task'), 1);
+    });
+
     test('the default singleton exists and is not started at import', () => {
         assert.ok(ausmRuntime instanceof AUSMRuntime);
         assert.equal(ausmRuntime.isScreenStreaming(), false);
-        assert.equal((ausmRuntime as any).frequencyMonitor.timer, null);
+        assert.equal((ausmRuntime as any).frequencyMonitor, null, 'event frequency stats are opt-in');
     });
 });

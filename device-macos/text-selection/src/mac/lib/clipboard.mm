@@ -71,3 +71,38 @@ int64_t GetClipboardSequence()
         return static_cast<int64_t>([pasteboard changeCount]);
     }
 }
+
+NSArray<NSPasteboardItem *> *SnapshotClipboard()
+{
+    @autoreleasepool
+    {
+        NSPasteboard *pasteboard = [NSPasteboard generalPasteboard];
+        NSMutableArray<NSPasteboardItem *> *snapshot = [NSMutableArray array];
+        for (NSPasteboardItem *item in [pasteboard pasteboardItems] ?: @[])
+        {
+            NSPasteboardItem *copy = [[NSPasteboardItem alloc] init];
+            BOOL hasData = NO;
+            for (NSPasteboardType type in [item types])
+            {
+                NSData *data = [item dataForType:type];
+                if (data != nil && [copy setData:data forType:type])
+                    hasData = YES;
+            }
+            if (hasData)
+                [snapshot addObject:copy];
+        }
+        return snapshot;
+    }
+}
+
+bool RestoreClipboard(NSArray<NSPasteboardItem *> *snapshot)
+{
+    @autoreleasepool
+    {
+        NSPasteboard *pasteboard = [NSPasteboard generalPasteboard];
+        [pasteboard clearContents];
+        if (snapshot.count == 0)
+            return true;
+        return [pasteboard writeObjects:snapshot] == YES;
+    }
+}

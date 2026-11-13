@@ -247,8 +247,9 @@ export class ScreenshotDetectorService extends EventEmitter {
 
             case 'screencaptureui_started': {
                 // The Screenshot UI agent normally appears inside a screencapture session; only
-                // treat it as a session start when no screencapture session is open.
-                if (this.sessionOpen) break;
+                // treat it as a session start when no screencapture session is open. With hotkeyOnly
+                // a UI-only session can't be attributed to a hotkey, so it is never synthesized.
+                if (this.sessionOpen || this.hotkeyOnly) break;
                 this.sessionOpen = true;
                 this.uiSessionOpen = true;
                 const event = createScreenshotEvent({

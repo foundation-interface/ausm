@@ -703,8 +703,9 @@ domain  dl.acm.org</pre></div>
         <div><b>Editors</b><pre>file      /src/runtime.ts
 filename  runtime.ts
 extension ts</pre></div>
-        <div><b>Your app</b><pre>class Slack implements
-  MaterialMetadataExtractor</pre></div>
+        <div><b>More apps</b><pre>add an extractor in
+material-manager/
+  metadata-extractors.ts</pre></div>
       </div>
       <div class="dnext"><a href="#docs/memory"><small>Next</small>Memory</a></div>
     </article>
@@ -795,7 +796,7 @@ const rank  = await ausm.getMaterialWeights(7);</pre>
       <h3>Write a detector</h3>
       <p class="hint">A folder with a <code>DETECTOR.md</code>. Hover a line.</p>
       <div class="dmd">
-<pre id="dmd"><span class="d">---</span><span data-k="name">name: stuck-on-error</span><span data-k="event">event: stuck</span><span data-k="trigger">trigger: interval</span><span data-k="interval">interval: 30000</span><span data-k="cooldown">cooldown: 30000</span><span data-k="sources">sources: [screen, events]</span><span data-k="events">events: [copy-paste, text-input]</span><span data-k="isolated">isolated: false</span><span class="d">---</span><span data-k="body">Fire when the same error stays on screen</span><span data-k="body">and the user has copied or searched it.</span><span data-k="body">Summarise the error in under 12 words.</span></pre>
+<pre id="dmd"><span class="d">---</span><span data-k="name">name: stuck-on-error</span><span data-k="description">description: Notices a repeated error</span><span data-k="event">event: stuck</span><span data-k="trigger">trigger: interval</span><span data-k="interval">interval: 30000</span><span data-k="cooldown">cooldown: 30000</span><span data-k="sources">sources: [screen, events]</span><span data-k="events">events: [copy-paste, text-input]</span><span data-k="isolated">isolated: false</span><span class="d">---</span><span data-k="body">Fire when the same error stays on screen</span><span data-k="body">and the user has copied or searched it.</span><span data-k="body">Summarise the error in under 12 words.</span></pre>
         <div class="dmd-x" id="dmd-x"></div>
       </div>
 <pre class="code" style="margin-top:14px">createRuntime({ detectors: { extraDirs: ['./detectors'] } });
@@ -832,7 +833,7 @@ ausm.onDetectorEvent((e) =&gt; { if (e.eventType === 'stuck') offerHelp(e.summar
         <div class="seg" role="tablist" aria-label="Provider" id="prov-tabs">
           <button type="button" role="tab" aria-selected="true" data-prov="cerebras">Cerebras</button>
           <button type="button" role="tab" aria-selected="false" data-prov="vertex">Vertex</button>
-          <button type="button" role="tab" aria-selected="false" data-prov="compat">OpenAI-compatible</button>
+          <button type="button" role="tab" aria-selected="false" data-prov="compat">Local or OpenAI-compatible</button>
         </div>
         <pre class="code" id="prov-code"></pre>
         <table class="envt" id="prov-env"></table>
@@ -847,7 +848,7 @@ ausm.onDetectorEvent((e) =&gt; { if (e.eventType === 'stuck') offerHelp(e.summar
   </div>
 </div>
 
-<footer class="wrap"><span>AUSM · MIT</span><span>Runs locally. Nothing leaves the Mac unless you add a model provider.</span><a href="https://github.com/foundation-interface/ausm" target="_blank" rel="noopener">GitHub</a></footer>
+<footer class="wrap"><span>AUSM · MIT</span><span>Runs locally. Only a model provider you configure, or Material Chat if you turn it on, sends anything out.</span><a href="https://github.com/foundation-interface/ausm" target="_blank" rel="noopener">GitHub</a></footer>
 
 <script type="text/plain" id="skill-src">
 ---
@@ -863,8 +864,8 @@ Three layers, each optional on top of the one before:
 
 1. **Sensors** (`device-macos/*`): native helpers that emit events. macOS only.
 2. **Materials + memory**: window crops, perceptual hashes, OCR, SQLite store.
-3. **Understanding**: `DETECTOR.md` specs evaluated by Vertex (Gemini) or Cerebras, producing
-   `DetectorEvent` and `TaskEvent`.
+3. **Understanding**: `DETECTOR.md` specs evaluated by a vision model (Vertex Gemini, Cerebras, or
+   any OpenAI-compatible endpoint, including a local one), producing `DetectorEvent` and `TaskEvent`.
 
 ## Pick the integration path first
 
@@ -883,7 +884,11 @@ screenshot helper at once). Both install event taps or AX observers and report e
 npm install ausm
 ```
 
-Requirements: macOS 13+, Node >= 18, Xcode Command Line Tools, Python >= 3.10 (materials, OCR).
+Requirements: macOS 13+, Node >= 18, Xcode Command Line Tools, Python >= 3.9 (materials, OCR).
+
+Materials need the Python packages in the material-manager's `py/requirements.txt` (numpy,
+opencv-python-headless, pyobjc Vision/Quartz). Python is found as `materialManager.pythonPath`, then
+a `.venv` in the project, then `python3`. Without them, materials fail quietly (a warning in the log).
 
 ```ts
 import { createRuntime } from 'ausm/runtime';     // runtime: only from 'ausm/runtime'
@@ -899,28 +904,32 @@ const runtime = createRuntime({
 
 runtime.onMaterialEvent((e: MaterialEvent) => {});
 runtime.onTaskEvent((e: TaskEvent) => {});
-await runtime.initialize();
+await runtime.initialize();   // first run shows the system Accessibility prompt
 // ...
-runtime.shutdown();
+process.on('SIGINT', () => { runtime.shutdown(); process.exit(0); }); // Electron: app 'before-quit'
 ```
+
+`shutdown()` is synchronous and fire-and-forget. It stops the helpers but keeps your callbacks, so
+don't register them again if you initialize the same runtime later.
 
 ### Subscriptions (exact names, they are not uniform)
 
-| Method | Event `kind` | Payload highlights |
-| --- | --- | --- |
-| `onTextSelectionEvent` | `textSelection` | selected text, `SelectionMethod`, `SelectionStage` |
-| `subscribeToTextInputEvent` | `textInput` | `text`, `TEXT_INPUT_STARTED / UPDATED / ENDED`. **Not** `onTextInputEvent`. |
-| `onCopyPasteEvent` | `copyPaste` | `COPY` / `PASTE`, `contentType`, `content` |
-| `onApplicationSwitchEvent` | `windowState` | every window state: `APPEAR FOCUSED UNFOCUSED VANISHED TITLE_CHANGED BOUNDS_CHANGED` |
-| `onSpaceChangeEvent` | `spaceChange` | Mission Control space changed |
-| `onScreenshotEvent` | `screenshot` | `SCREENSHOT_STARTED / UPDATED / FINISHED`; image only on FINISHED |
-| `onCursorPlusPlusEvent` | `cursorPlusPlus` | `CLICK DOUBLE_CLICK RIGHT_CLICK SCROLL HOLD_START HOLD_END DRAG MOVE`, UI element role/label |
-| `onMaterialEvent` | `material` | `MATERIAL_CREATED FOCUSED UNFOCUSED FRAME_CAPTURED CONTENT_UPDATED`, `appMetadata` |
-| `onDetectorEvent` | `detector` | `detectorName`, `eventType`, `confidence`, `summary`, `evidence` |
-| `onTaskEvent` | `task` | `TASK_DETECTED / UPDATED / COMPLETED`, `taskLabel`, `level` |
+| Method | Event `kind` | Switch on | Values and payload |
+| --- | --- | --- | --- |
+| `onTextSelectionEvent` | `textSelection` | `selectionStage` | `START UPDATE END`; `selectedText`, `SelectionMethod` |
+| `subscribeToTextInputEvent` | `textInput` | `status` | `TEXT_INPUT_STARTED / _UPDATED / _ENDED`; `text`. **Not** `onTextInputEvent`. |
+| `onCopyPasteEvent` | `copyPaste` | `action` | `COPY PASTE`; `contentType` (`TEXT HTML RTF IMAGE FILE URL`), `content` |
+| `onApplicationSwitchEvent` | `windowState` | `state` | every window state: `APPEAR FOCUSED UNFOCUSED VANISHED TITLE_CHANGED BOUNDS_CHANGED` |
+| `onSpaceChangeEvent` | `spaceChange` | | Mission Control space changed |
+| `onScreenshotEvent` | `screenshot` | `status` | `SCREENSHOT_STARTED / _UPDATED / _FINISHED`; image only on FINISHED |
+| `onCursorPlusPlusEvent` | `cursorPlusPlus` | `action` | `MOVE CLICK DOUBLE_CLICK RIGHT_CLICK SCROLL HOLD_START HOLD_END DRAG`; UI element role/label |
+| `onMaterialEvent` | `material` | `materialEventType` | `MATERIAL_CREATED MATERIAL_FOCUSED MATERIAL_UNFOCUSED FRAME_CAPTURED MATERIAL_CONTENT_UPDATED`; `appMetadata` |
+| `onDetectorEvent` | `detector` | `eventType` | the detector's `event`; `detectorName`, `confidence`, `summary`, `evidence` |
+| `onTaskEvent` | `task` | `status` | `TASK_DETECTED / _UPDATED / _COMPLETED`; `taskLabel`, `level` |
 
 Every event has `kind`, `eventID`, `timestamp`, `displayID`; switch on `kind`. Enum values are
-`UPPER_SNAKE`. Callbacks are additive and `shutdown()` does not remove them, so register once.
+`UPPER_SNAKE`. Callbacks are additive and `shutdown()` does not remove them, so register once;
+each `on*` method returns a function that unsubscribes.
 
 ### Defaults
 
@@ -928,9 +937,14 @@ Every event has `kind`, `eventID`, `timestamp`, `displayID`; switch on `kind`. E
   detector scan.
 - Off unless configured: screen stream, camera, text input, material manager, cursor++, memory
   OCR, Material Chat HTTP host.
-- The pipeline runs only when a Vertex `projectId` or `CEREBRAS_API_KEY` is set. Missing optional
-  pieces log a warning and continue; they do not throw.
-- `materialManager.dbPath` defaults to `:memory:`. Set a real path to persist.
+- The pipeline runs only when a model is configured (see Models). Missing optional pieces log a
+  warning and continue; they do not throw. The one exception: with `materialChat.enabled`,
+  `initialize()` rejects if the Material Chat host can't start.
+- `materialManager.dbPath` defaults to `:memory:`. Set a real path to persist (Material Chat needs it).
+- Sensor and permission problems are only logged to stderr (`[AUSM] … error:`); the Node runtime
+  has no error event. Check permissions yourself before relying on a sensor.
+- Privacy knobs: `clipboardMonitor: { includeContent: false }`, `materialManager.materialBlacklist`
+  (`apps`, `bundleIds`, `titleIncludes`), `memory: { frozen: true }` / `freezeMemory()`.
 
 ### Queries (after `initialize()`, main process only)
 
@@ -938,7 +952,7 @@ Every event has `kind`, `eventID`, `timestamp`, `displayID`; switch on `kind`. E
 `getMaterialContent(id)` (OCR text), `getMaterialWeights(halfLifeDays)`,
 `getScreenshots(limit, since)`, `getScreenshot(id)`, `getScreenDisplays()`,
 `captureLatestScreenFrame()`, `getCameraDevices()`, `captureLatestCameraFrame()`,
-`freezeMemory()` / `unfreezeMemory()`.
+`freezeMemory()` / `unfreezeMemory()` / `isMemoryFrozen()`.
 
 These are stubs that return empty values. Do not build on them: `getImmediateContext`,
 `getRelevantMaterials`, `getScreenshotImageData`, `getCoveredMaterials`, `getBounds`,
@@ -959,41 +973,79 @@ const bridge = setupAUSMElectronBridge(win, runtime);
 Renderer: `window.ausm.onTextSelection(cb)`, `onScreenshot`, `onWindowState`, `onTextInput`,
 `onMaterialEvent`, `onCursorPlusPlusEvent`, `onCopyPasteEvent`, `onSpaceChange`, `onTaskEvent`,
 `onDetectorEvent`, `getScreenDisplays()`, `subscribeScreenStream(cb)`. To add your own preload
-API, use `exposeAUSM()` from `ausm/bridge/preload-api` and expose your namespace separately.
+API, write your own preload that calls `exposeAUSM()` from `ausm/bridge/preload-api` and exposes
+your namespace separately (with `contextIsolation: true`).
+
+Materials and memory run under the system `node`, not Electron's (`materialManager.nodePath` to
+override), so `better-sqlite3` must be built for that Node.
 
 ### Detectors
 
 A detector is a folder with a `DETECTOR.md`. Put custom ones in a directory listed in
-`detectors.extraDirs`. They are loaded on `initialize()`.
+`detectors.extraDirs`. They are loaded once, on the first `initialize()` of a runtime.
 
 ```markdown
 ---
 name: stuck-on-error
 description: Notices when the user keeps returning to the same error
-event: stuck            # `task` is reserved for the TaskTracker
-cooldown: 30000         # ms between firings
-interval: 30000         # ms between evaluations (default = cooldown)
-trigger: interval       # interval | screen
+event: stuck
+cooldown: 30000
+interval: 30000
 sources: [screen, events]
 events: [window-state, text-input, copy-paste, screenshot]
-isolated: false         # true = its own model call
-enabled: true
 ---
 Fire when the focused material shows the same error message for several evaluations and the
 user has copied or searched for it. Summarise the error in under 12 words.
 ```
 
+- `name`, `description` and `event` are required; a file missing one is skipped with a warning.
+- `event` becomes `eventType` on the `DetectorEvent`. `task` is reserved for the TaskTracker.
+- Checks are driven by new activity: a check runs at most `debounce` ms (default `interval / 2`)
+  after the first new event. `interval` (default = `cooldown`) is the minimum gap between checks,
+  and `cooldown` (default 10000) is how long a detector stays quiet after it fires. All in ms.
+- `sources`: `screen` (the focused window's latest frame), `events`, or both (default both).
+  `events` filters which kinds enter the prompt: `material window-state text-input
+  text-selection copy-paste cursor screenshot`. Detectors with the same sources and events share
+  one model call; `isolated: true` gives a detector its own.
+- `enabled: false` turns one off. Use `trigger: interval` (the default); `trigger: screen` is
+  parsed but not scheduled on its own yet.
+- `detectors.entries.<name>.enabled: false` disables one from config (it can't force-enable a
+  file that says `false`); `detectors.enabled: false` turns the whole system off.
+
 Results arrive on `onDetectorEvent` with `eventType: 'stuck'`. The shipped `rapid-task`
 detector (`event: task`) drives `onTaskEvent`.
 
-Provider setup: `TASK_DETECTOR_PROVIDER=cerebras` + `CEREBRAS_API_KEY`, or
-`TASK_DETECTOR_PROVIDER=vertex` + `TASK_DETECTOR_PROJECT_ID` + `gcloud auth application-default login`.
+### Models
+
+Detectors send the focused window's frame (JPEG, longest side 768 px) plus up to 40 recent
+compact events. The model must accept images and return JSON.
+
+```ts
+// Cerebras (OpenAI-compatible, the default endpoint): CEREBRAS_API_KEY in the env
+detectorPipeline: { provider: 'cerebras' }
+
+// Vertex Gemini: gcloud auth application-default login
+detectorPipeline: { provider: 'vertex', projectId: 'my-project', location: 'global' }
+
+// Any OpenAI-compatible server, including local ones (Ollama, vLLM). No key needed for a local URL.
+detectorPipeline: { provider: 'cerebras', apiBaseUrl: 'http://localhost:11434/v1', model: 'qwen2.5vl:7b' }
+```
+
+`provider: 'cerebras'` is the OpenAI-compatible client: it POSTs to `{apiBaseUrl}/chat/completions`
+with an `image_url` part and `response_format: { type: 'json_object' }`. Env equivalents:
+`TASK_DETECTOR_PROVIDER`, `CEREBRAS_API_KEY`, `CEREBRAS_BASE_URL`, `TASK_DETECTOR_PROJECT_ID`,
+`TASK_DETECTOR_LOCATION`, `TASK_DETECTOR_MODEL`. A text-only model fails every evaluation.
 
 ### Material Chat (optional)
 
 `materialChat: { enabled: true }` (or `http: { enabled: true, port: 8788 }`) starts a child process
 with memory search and a Claude agent over the user's materials. Get its URL from
-`runtime.getHttpUrl()`. Never start the `material-chat` bin yourself. It needs `ANTHROPIC_API_KEY`.
+`runtime.getHttpUrl()`. Never start the `material-chat` bin yourself. It needs `ANTHROPIC_API_KEY`
+and a real `materialManager.dbPath`, and it sends the user's material text to Anthropic.
+
+It listens on 127.0.0.1 and only answers requests with no `Origin` (main process) or from
+localhost and `file://` pages. A renderer on a custom scheme must be listed:
+`materialChat: { enabled: true, allowedOrigins: ['app://my-app'] }`.
 
 ## Native Swift
 
@@ -1049,8 +1101,11 @@ windows.start()
 - `WindowMonitorKit` and `TextInputMonitorKit` need the main run loop running (any
   NSApplication does). `TextInputMonitor.stop()` delivers a final `finished` for an edit in
   progress.
-- Each kit has `onError(Problem, String)` (cursor: an `error` `CursorEvent`). Show the user what
-  to grant; the kits pick up a grant without a restart.
+- Keep a strong reference to each monitor; releasing it stops it.
+- Screenshot, Clipboard, Window and TextInput report problems through `onError(Problem, String)`
+  and pick up a grant without a restart. `CursorMonitor.start()` returns `false` without
+  Accessibility; call it again after the user grants it (a later `event_tap_disabled` arrives as
+  an `error` `CursorEvent`).
 - Privacy is built in: password fields and concealed/transient clipboard entries never produce
   content. Text input is sensitive: turn it on only when the feature needs it.
 - The kits are compiled into the host binary. The **host app** is what the user grants
@@ -1064,10 +1119,11 @@ windows.start()
 | text selection, text input, window state, cursor++ | Accessibility | selection and window state on |
 | screen stream, screenshot image, window titles | Screen Recording | screenshot on, stream off |
 | camera | Camera | off |
-| clipboard | none | on |
+| clipboard | none (macOS 15.4+ may ask to allow pasteboard access) | on |
 
-Permission problems arrive as error events. Check them and show the user what to grant. Do not
-retry in a loop.
+The Node runtime asks for Accessibility on first start and logs other permission problems; the
+Swift kits report them via `onError`. In development the terminal is what gets the grants. Show
+the user what to grant; do not retry in a loop.
 
 ## Rules for agents working with AUSM
 
@@ -1091,7 +1147,8 @@ retry in a loop.
 | No events at all | Accessibility not granted to the host app (or the terminal in development) |
 | Screenshot event but no image, or windows missing from frames | Screen Recording not granted |
 | Window events with empty titles | Screen Recording not granted. macOS hides titles without it |
-| No `TaskEvent` | No `CEREBRAS_API_KEY` or Vertex `projectId`, or `rapid-task` disabled |
+| No `TaskEvent` | No model configured, a text-only model, or `rapid-task` disabled |
+| Detector never fires | Missing `description`, or a typo in the frontmatter (check the load warning) |
 | Grants vanish after each rebuild (Swift) | App signed ad hoc. Sign with a stable identity |
 | `Cannot find module '@ausm/core'` in the monorepo | Run `npm run build` first. Packages resolve through `dist/` |
 </script>
@@ -1431,10 +1488,11 @@ retry in a loop.
   }
 
   var DMD = {
-    name: ["name", "Folder-unique id. Shows up as detectorName."],
-    event: ["event", "The eventType you filter on. task is reserved for task tracking."],
-    trigger: ["trigger", "interval runs on a timer. screen runs on every new kept frame."],
-    interval: ["interval", "Milliseconds between checks. Defaults to cooldown."],
+    name: ["name", "Required. Folder-unique id. Shows up as detectorName."],
+    description: ["description", "Required. One line the model reads alongside the rules."],
+    event: ["event", "Required. The eventType you filter on. task is reserved for task tracking."],
+    trigger: ["trigger", "interval: checked as new activity arrives (the default). screen is parsed but not scheduled yet."],
+    interval: ["interval", "Minimum milliseconds between checks. Defaults to cooldown."],
     cooldown: ["cooldown", "Milliseconds to stay quiet after firing."],
     sources: ["sources", "What the model sees: screen, events, or both. Part of the group key."],
     events: ["events", "Which event kinds enter the prompt. Also part of the group key."],
@@ -1471,8 +1529,8 @@ retry in a loop.
       env: [["TASK_DETECTOR_PROJECT_ID", "Instead of projectId"], ["gcloud auth application-default login", "Auth, once per machine"], ["model", "Default gemini-2.0-flash"]]
     },
     compat: {
-      code: "createRuntime({\n  detectorPipeline: {\n    provider: 'cerebras',               <span class=\"c\">// OpenAI-style client</span>\n    apiBaseUrl: 'http://localhost:8000/v1',\n    apiKey: 'local',\n    model: 'my-vision-model',\n  },\n});",
-      env: [["CEREBRAS_BASE_URL", "Instead of apiBaseUrl"], ["Endpoint", "POST {base}/chat/completions"], ["Must support", "image_url parts and json_object output"]]
+      code: "createRuntime({\n  detectorPipeline: {\n    provider: 'cerebras',               <span class=\"c\">// OpenAI-style client</span>\n    apiBaseUrl: 'http://localhost:11434/v1', <span class=\"c\">// Ollama, vLLM, …</span>\n    model: 'qwen2.5vl:7b',            <span class=\"c\">// any vision model</span>\n  },\n});",
+      env: [["CEREBRAS_BASE_URL", "Instead of apiBaseUrl"], ["apiKey", "Optional for a local URL"], ["Endpoint", "POST {base}/chat/completions"], ["Must support", "image_url parts and json_object output"]]
     }
   };
   init.models = function () {

@@ -73,17 +73,17 @@
     "darwin"
   ],
   "gypfile": true,
-  "author": "Timeless",
+  "author": "Aware",
   "publishConfig": {
     "access": "public"
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/timeless/ausm.git",
+    "url": "https://github.com/foundation-interface/ausm.git",
     "directory": "device-macos/text-selection"
   },
-  "homepage": "https://github.com/timeless/ausm",
+  "homepage": "https://github.com/foundation-interface/ausm",
   "bugs": {
-    "url": "https://github.com/timeless/ausm/issues"
+    "url": "https://github.com/foundation-interface/ausm/issues"
   }
 }

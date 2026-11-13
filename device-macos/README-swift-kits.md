@@ -109,8 +109,7 @@ The kits report permission and health problems instead of failing silently:
   `pasteboard_access_prompts` when the user set this app's paste access to Deny / Ask (macOS 15.4+
   `NSPasteboard.accessBehavior`). Polling `changeCount` and the type list never prompts.
 
-The helpers write these messages to stderr (never user content) and keep the wire format
-unchanged. They exit when their parent process dies (stdin EOF or parent-pid watch).
+The helpers write these messages to stderr (never user content). They exit when their parent process dies (stdin EOF or parent-pid watch).
 
 ## ScreenshotMonitorKit — how macOS 26 screenshots actually behave
 
@@ -120,9 +119,8 @@ Verified on macOS 26.3 (Darwin 25.3):
    `-z keyboard.screen` (⌘⇧3), `-z keyboard.selection` (⌘⇧4), `-z keyboard.interactive` (⌘⇧5),
    with a `.clipboard` suffix and `-c` when ⌃ is held.
 2. Interactive modes hand off to the persistent `screencaptureui` agent and the `screencapture`
-   process **exits at an arbitrary moment** — often before the user has dragged anything.
-   The old helper captured at that exit, so ⌘⇧4 produced a full-display image taken before the
-   selection existed and the selection rect was never applied.
+   process **exits at an arbitrary moment** — often before the user has dragged anything, so
+   capturing at that exit would produce a full-display image taken before the selection existed.
 3. The file lands on disk 4–10 s later (after the floating thumbnail); clipboard captures are
    immediate.
 
@@ -146,8 +144,9 @@ denied, no capture is produced: the legacy CoreGraphics fallback would return on
 wallpaper, so it is used only when permission is granted.
 
 `ScreenshotMonitor.Options`: `writeTempFile`, `tempFileFormat`, `excludedBundleIdentifiers`,
-`excludeOwnProcess`, `captureDelay`, `sessionTimeout`, `staleTempFileAge`, `debugLogging`
-(`ScreenshotHelper --debug`). Typed callbacks for hosts: `onSessionStarted`, `onSelectionChanged`,
+`excludeOwnProcess`, `captureDelay`, `sessionTimeout`, `staleTempFileAge`, `hotkeyOnly`
+(`ScreenshotHelper --hotkey-only`; follow only hotkey-launched `screencapture`, and report
+`screencaptureui` events only inside such a session), `debugLogging` (`ScreenshotHelper --debug`). Typed callbacks for hosts: `onSessionStarted`, `onSelectionChanged`,
 `onCapture` (CGImage, rect, display, scale, mode, destination), `onSessionEnded(cancelled:)`,
 `onError(Problem, String)`.
 
@@ -186,7 +185,7 @@ Privacy: a pasteboard carrying `org.nspasteboard.ConcealedType`, `org.nspasteboa
 read. `includeContent = false` never reads any content. Image data is never read. `content` is
 capped at `maxContentBytes` (default 1 MiB) on a character boundary.
 
-Wire format (`ClipboardHelper [--no-content] [--max-content-bytes N]`), unchanged:
+Wire format (`ClipboardHelper [--no-content] [--max-content-bytes N]`):
 `{"type":"ready"}` then `{"type":"clipboard_changed","changeCount":N,"timestamp":ms,
 "contentType"?,"content"?,"contentPaths"?,"contentTruncated"?,"concealed"?}`. `ClipboardEvent.wireObject`
 / `wireLine` produce exactly these objects.
@@ -211,7 +210,7 @@ Untitled windows, windows of 100 pt or less, non-layer-0 windows and system UI
 (`Options.blockedBundleIdentifiers`) are skipped. `excludeOwnProcess` leaves the host's own
 windows out; `resolveDocumentPaths = false` skips the AXDocument lookups.
 
-Wire format (ViewportHelper), unchanged: the `ready` line keeps zeroed window fields for older
+Wire format (ViewportHelper): the `ready` line keeps zeroed window fields for older
 readers, then window events, `{"type":"space-changed","timestamp":ms}` and
 `{"type":"permission",…}`. `WindowMonitorEvent.wireLine` produces exactly these lines.
 
@@ -222,8 +221,9 @@ kAXValueChanged for the focused text field, text area or combo box, and delivers
 `TextInputMonitorEvent`: `.ready(accessibilityTrusted:)`, `.textInput(TextInputEvent)`,
 `.permissionChanged(accessibilityTrusted:)`. `TextInputEvent` has `status`
 (`TextInputStatus.started` / `.updated` / `.finished`, raw `TEXT_EDITING_*`), `text` (the
-element's full value), `sourceElement` (role, app name, bundle id, frame), `caretScreenPosition`
-and `timestamp` (ms).
+element's value, capped at `Options.maxTextLength` characters, default 100 000, with
+`textTruncated: true` when cut), `sourceElement` (role, app name, bundle id, frame),
+`caretScreenPosition` and `timestamp` (ms).
 
 Session rules (`TextEditTracker`, unit-tested): STARTED on focus into an editable element (focus
 landing on a child resolves to the nearest editable ancestor within 8 levels); duplicate focus
@@ -236,7 +236,7 @@ Privacy: password fields (`AXSecureTextField` subrole, native and web) produce n
 value reads and no value observer, so not even typing cadence leaks. A password field nested in
 an editable ancestor is not tracked through that ancestor. The host's own fields are skipped.
 
-Wire format (TextInputHelper), unchanged: `{"type":"ready","accessibilityTrusted":…}`, text-input
+Wire format (`TextInputHelper [--max-text-length N]`): `{"type":"ready","accessibilityTrusted":…}`, text-input
 objects without a `type` field, and `{"type":"permission","accessibilityTrusted":…}`.
 
 ## Tests

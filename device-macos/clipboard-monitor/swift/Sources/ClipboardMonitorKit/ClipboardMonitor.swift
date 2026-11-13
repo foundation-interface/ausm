@@ -120,8 +120,13 @@ public final class ClipboardMonitor: @unchecked Sendable {
         let count = pasteboard.changeCount
         checkAccess(force: false)
         guard count != lastChangeCount else { return }
+        let event = readEvent(changeCount: count)
+        // Types and content are separate reads: if the pasteboard changed in between (e.g. a
+        // concealed item written after the concealed check), drop this result; the next poll
+        // sees the new changeCount and reads the new item.
+        guard pasteboard.changeCount == count else { return }
         lastChangeCount = count
-        onEvent?(readEvent(changeCount: count))
+        onEvent?(event)
     }
 
     func readEvent(changeCount count: Int) -> ClipboardEvent {

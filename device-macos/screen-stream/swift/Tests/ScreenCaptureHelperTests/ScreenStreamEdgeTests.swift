@@ -546,3 +546,37 @@ final class UnixSocketTests: XCTestCase {
         server.stop()
     }
 }
+
+final class VideoSegmentPathTests: XCTestCase {
+    func testSegmentPathIsUniquePerSegment() {
+        // Regression: the path used to be fixed `<dir>/<displayId>.mp4` and VideoWriter deleted it on
+        // init, so re-adding a display after a reconfigure destroyed the just-finalized recording.
+        let date = Date(timeIntervalSince1970: 1_700_000_000.123)
+        let first = VideoWriter.segmentPath(directory: "/rec", displayId: "display-1", date: date,
+                                            fileExists: { _ in false })
+        XCTAssertTrue(first.hasPrefix("/rec/display-1-"))
+        XCTAssertTrue(first.hasSuffix(".mp4"))
+        XCTAssertNotEqual(first, "/rec/display-1.mp4")
+
+        var taken: Set<String> = [first]
+        let second = VideoWriter.segmentPath(directory: "/rec", displayId: "display-1", date: date,
+                                             fileExists: { taken.contains($0) })
+        XCTAssertEqual(second, String(first.dropLast(4)) + "-1.mp4")
+        taken.insert(second)
+        let third = VideoWriter.segmentPath(directory: "/rec", displayId: "display-1", date: date,
+                                            fileExists: { taken.contains($0) })
+        XCTAssertEqual(third, String(first.dropLast(4)) + "-2.mp4")
+    }
+
+    func testInitializeDoesNotDeleteExistingFile() throws {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent("ausm-vw-\(getpid())-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let existing = dir.appendingPathComponent("display-1.mp4").path
+        XCTAssertTrue(FileManager.default.createFile(atPath: existing, contents: Data("keep".utf8)))
+        let writer = VideoWriter()
+        _ = writer.initialize(outputPath: existing, width: 16, height: 16, fps: 1)
+        writer.finalize()
+        XCTAssertEqual(FileManager.default.contents(atPath: existing), Data("keep".utf8))
+    }
+}

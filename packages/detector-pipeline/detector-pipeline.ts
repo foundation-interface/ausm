@@ -30,7 +30,7 @@ import type {
     PromptTrace,
 } from './types';
 import { VertexDetectorClient } from './vertex-client';
-import { CerebrasDetectorClient, CEREBRAS_DEFAULT_MODEL } from './cerebras-client';
+import { CerebrasDetectorClient, CEREBRAS_DEFAULT_MODEL, CEREBRAS_DEFAULT_BASE_URL } from './cerebras-client';
 
 interface DownsampleResult {
     data: string;
@@ -541,13 +541,17 @@ export class DetectorPipelineService extends EventEmitter {
             if (slot === null) return []; // cancelled by cleanup() while queued
             let evalResult: DetectorEvaluateResult;
             try {
-                evalResult = await client.evaluate(
+                const evaluation = client.evaluate(
                     group.specs,
                     events,
                     imageBase64,
                     maxEvents,
                     this.evaluationContext,
                 );
+                // The Vertex client has no request timeout of its own; don't let a hung call hold an eval slot forever.
+                evalResult = this.config.provider === 'vertex'
+                    ? await withTimeout(evaluation, VERTEX_EVAL_TIMEOUT_MS, 'Vertex evaluation')
+                    : await evaluation;
             } finally {
                 this.releaseEvalSlot(slot);
             }
@@ -563,8 +567,9 @@ export class DetectorPipelineService extends EventEmitter {
             const e2eMs = frameReceivedAtSnapshot > 0 ? Date.now() - frameReceivedAtSnapshot : Date.now() - evalStartMs;
             this.recordModelLatency(modelLatencyMs);
 
-            console.log(
-                `[detector-pipeline] [${detectorNames}]` +
+            // Includes model summaries of user activity: debug only.
+            this.logDebug(
+                `[${detectorNames}]` +
                 ` model=${modelLatencyMs}ms send→response` +
                 (attempt > 0 ? ` (attempt ${attempt + 1})` : '') +
                 ` avg=${this.averageModelLatency()}ms` +
@@ -643,7 +648,7 @@ export class DetectorPipelineService extends EventEmitter {
             return results;
         } catch (err) {
             const failMs = Date.now() - evalStartMs;
-            console.log(`[detector-pipeline] [${detectorNames}] error after ${failMs}ms: ${err instanceof Error ? err.message : String(err)}`);
+            this.logDebug(`[${detectorNames}] error after ${failMs}ms: ${err instanceof Error ? err.message : String(err)}`);
 
             const isRateLimit = err instanceof Error &&
                 (err.message.includes('429') || err.message.includes('RESOURCE_EXHAUSTED'));
@@ -684,7 +689,7 @@ export class DetectorPipelineService extends EventEmitter {
 
         if (specs.length === 0) return [];
 
-        console.log(`[detector-pipeline] Dispatching suggested detectors: ${specs.map(s => s.name).join(', ')}`);
+        this.logDebug(`Dispatching suggested detectors: ${specs.map(s => s.name).join(', ')}`);
 
         // Pin the already-prepared frame so follow-up evals skip another resize.
         const savedFrame = this.latestScreenFrame;
@@ -882,9 +887,10 @@ export class DetectorPipelineService extends EventEmitter {
         };
 
         if (this.config.provider === 'cerebras') {
-            const apiKey = this.config.apiKey?.trim();
-            if (!apiKey) {
-                throw new Error('Cerebras detector pipeline requires CEREBRAS_API_KEY');
+            const apiKey = this.config.apiKey?.trim() ?? '';
+            // Local OpenAI-compatible servers (Ollama, vLLM, LM Studio) need no key; Cerebras itself does.
+            if (!apiKey && !isCustomOpenAIBaseUrl(this.config.apiBaseUrl)) {
+                throw new Error('OpenAI-compatible endpoint requires CEREBRAS_API_KEY (or set apiBaseUrl to a keyless server)');
             }
             return new CerebrasDetectorClient({
                 apiKey,
@@ -911,6 +917,24 @@ export class DetectorPipelineService extends EventEmitter {
             console.log(`[detector-pipeline] ${msg}`);
         }
     }
+}
+
+/** Overall cap on one Vertex evaluate() call, retries included. */
+const VERTEX_EVAL_TIMEOUT_MS = 60_000;
+
+/** Reject if `promise` hasn't settled within `ms` (the underlying call is not cancelled). */
+function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const timeout = new Promise<never>((_, reject) => {
+        timer = setTimeout(() => reject(new Error(`${label} timed out after ${ms}ms`)), ms);
+    });
+    return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
+}
+
+/** True when `url` points somewhere other than the hosted Cerebras API. */
+function isCustomOpenAIBaseUrl(url: string | undefined): boolean {
+    const normalized = url?.trim().replace(/\/+$/, '');
+    return Boolean(normalized) && normalized !== CEREBRAS_DEFAULT_BASE_URL;
 }
 
 export function createDetectorPipeline(

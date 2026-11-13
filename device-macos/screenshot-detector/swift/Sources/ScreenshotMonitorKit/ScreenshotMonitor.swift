@@ -174,6 +174,10 @@ public final class ScreenshotMonitor: @unchecked Sendable {
     private var pollTimer: DispatchSourceTimer?
     private var timeoutTimer: DispatchSourceTimer?
     private var knownScan = ScreenshotProcessScan()
+    /// `screencaptureui` pids whose `_started` was emitted (or that predate `start()` outside
+    /// hotkeyOnly), and new ones held back until a session accepts them (hotkeyOnly).
+    private var reportedUI: Set<pid_t> = []
+    private var pendingUI: Set<pid_t> = []
     private var session: Session?
     private var sessionCounter = 0
     private let rectTracker = RectHeuristicTracker()
@@ -230,6 +234,8 @@ public final class ScreenshotMonitor: @unchecked Sendable {
 
         // Baseline: screenshot processes that already exist are not new sessions.
         knownScan = env.scan()
+        reportedUI = options.hotkeyOnly ? [] : knownScan.screencaptureui
+        pendingUI = []
         reportedProblems = []
 
         let timer = DispatchSource.makeTimerSource(queue: queue)
@@ -261,6 +267,8 @@ public final class ScreenshotMonitor: @unchecked Sendable {
         eventTap = nil
         session = nil
         knownScan = ScreenshotProcessScan()
+        reportedUI = []
+        pendingUI = []
         rectTracker.reset()
     }
 
@@ -316,13 +324,6 @@ public final class ScreenshotMonitor: @unchecked Sendable {
         let previous = knownScan
         knownScan = scan
 
-        for pid in scan.screencaptureui.subtracting(previous.screencaptureui).sorted() {
-            emit(["type": "screencaptureui_started", "pid": Int(pid)])
-        }
-        for pid in previous.screencaptureui.subtracting(scan.screencaptureui).sorted() {
-            emit(["type": "screencaptureui_ended", "pid": Int(pid)])
-        }
-
         let appeared = scan.screencapture.subtracting(previous.screencapture)
         let exited = previous.screencapture.subtracting(scan.screencapture)
 
@@ -339,6 +340,23 @@ public final class ScreenshotMonitor: @unchecked Sendable {
                 endSession(cancelled: true)
             }
             beginSession(pid: pid, invocation: invocation)
+        }
+
+        // UI agent events come after screencapture handling so a session's STARTED precedes its
+        // UI's. With hotkeyOnly, UI that appears outside an accepted session (e.g. for a filtered
+        // CLI invocation) is not reported.
+        pendingUI.formUnion(scan.screencaptureui.subtracting(previous.screencaptureui))
+        pendingUI.formIntersection(scan.screencaptureui)
+        if !options.hotkeyOnly || session != nil {
+            for pid in pendingUI.sorted() {
+                emit(["type": "screencaptureui_started", "pid": Int(pid)])
+            }
+            reportedUI.formUnion(pendingUI)
+            pendingUI = []
+        }
+        for pid in reportedUI.subtracting(scan.screencaptureui).sorted() {
+            reportedUI.remove(pid)
+            emit(["type": "screencaptureui_ended", "pid": Int(pid)])
         }
 
         if let current = session, exited.contains(current.pid), !current.invocation.interactive, !current.captureInFlight {
