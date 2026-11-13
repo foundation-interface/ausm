@@ -7,7 +7,10 @@ export type TaskAction = 'continue' | 'update' | 'begin' | 'end' | 'switch';
 export interface TaskObservation {
     action?: string | null;
     label: string;
+    /** What the task is about (the summary's subject). Matching uses this, so keep it stable. */
     description: string;
+    /** Optional: one sentence on the current step. Shown on events, never used for matching. */
+    detail?: string | null;
     confidence: number;
     application?: string | null;
     evidence?: string | null;
@@ -23,6 +26,8 @@ interface TrackedTask {
     taskId: string;
     label: string;
     description: string;
+    /** The latest step inside the task; changes freely without splitting it. */
+    detail: string | null;
     application: string | null;
     startedAt: number;
 }
@@ -58,7 +63,7 @@ export class TaskTracker {
             return 'No active task. If the screenshot shows a low-level action, begin it.';
         }
         return [
-            `Current task: "${this.current.label}" — ${this.current.description} (id: ${this.current.taskId}, since ${new Date(this.current.startedAt).toISOString()})`,
+            `Current task: "${this.current.label}" — ${this.current.description}${this.current.detail ? ` (now: ${this.current.detail})` : ''} (id: ${this.current.taskId}, since ${new Date(this.current.startedAt).toISOString()})`,
             'Continue only if they are still on this same specific work. A different site, app, or content type is a new task — do not stretch this label to cover it.',
         ].join('\n');
     }
@@ -66,6 +71,7 @@ export class TaskTracker {
     apply(observation: TaskObservation): TaskEvent[] {
         const label = observation.label.trim();
         const description = observation.description.trim() || label;
+        const detail = observation.detail?.trim() || null;
         if (!label) return [];
 
         let action = normalizeAction(observation.action);
@@ -101,7 +107,8 @@ export class TaskTracker {
                 status,
                 taskId: task.taskId,
                 taskLabel: overrides?.label ?? task.label,
-                taskDescription: overrides?.description ?? task.description,
+                // The step sentence when there is one; otherwise the subject, as before.
+                taskDescription: overrides?.description ?? task.detail ?? task.description,
                 confidence: observation.confidence,
                 // The tracked task owns its application (already merged for continue/update).
                 // On a switch the COMPLETED event must not take the new observation's app.
@@ -123,11 +130,13 @@ export class TaskTracker {
                         ...this.current,
                         label,
                         description,
+                        // A check that skipped the sentence keeps the last one.
+                        detail: detail ?? this.current.detail,
                         application: observation.application ?? this.current.application,
                     };
                     emit(TaskStatus.UPDATED, this.current);
                 } else {
-                    this.current = createTracked(label, description, observation.application, now);
+                    this.current = createTracked(label, description, detail, observation.application, now);
                     emit(TaskStatus.DETECTED, this.current);
                 }
                 break;
@@ -139,11 +148,13 @@ export class TaskTracker {
                         ...this.current,
                         label,
                         description,
+                        // A check that skipped the sentence keeps the last one.
+                        detail: detail ?? this.current.detail,
                         application: observation.application ?? this.current.application,
                     };
                     emit(TaskStatus.UPDATED, this.current);
                 } else {
-                    this.current = createTracked(label, description, observation.application, now);
+                    this.current = createTracked(label, description, detail, observation.application, now);
                     emit(TaskStatus.DETECTED, this.current);
                 }
                 break;
@@ -163,7 +174,7 @@ export class TaskTracker {
                     emit(TaskStatus.COMPLETED, this.current);
                     this.current = null;
                 }
-                this.current = createTracked(label, description, observation.application, now);
+                this.current = createTracked(label, description, detail, observation.application, now);
                 emit(TaskStatus.DETECTED, this.current);
                 break;
             }
@@ -198,9 +209,10 @@ export function observationFromDetectorResult(result: {
         || fromJson?.label
         || splitSummary(result.summary).label
     ).trim();
+    // The subject decides which task this is; task_description is the finer step and is
+    // carried separately so a new sentence each check doesn't split the task.
     const description = (
-        result.taskDescription?.trim()
-        || fromJson?.description
+        fromJson?.description
         || splitSummary(result.summary).description
         || result.evidence
         || label
@@ -210,6 +222,7 @@ export function observationFromDetectorResult(result: {
         action: result.taskAction || fromJson?.action || null,
         label,
         description,
+        detail: result.taskDescription?.trim() || null,
         confidence: result.confidence,
         application: result.application ?? null,
         evidence: result.evidence,
@@ -225,6 +238,7 @@ export function observationFromDetectorResult(result: {
 function createTracked(
     label: string,
     description: string,
+    detail: string | null,
     application: string | null | undefined,
     startedAt: number,
 ): TrackedTask {
@@ -232,6 +246,7 @@ function createTracked(
         taskId: `task_${randomUUID()}`,
         label,
         description,
+        detail,
         application: application ?? null,
         startedAt,
     };

@@ -43,7 +43,8 @@ export class VertexDetectorClient implements DetectorModelClient {
 
         this.evaluationConfig = {
             systemInstruction: DETECTOR_PIPELINE_SYSTEM_PROMPT,
-            maxOutputTokens: 256,
+            // Room for a one-sentence task_description.
+            maxOutputTokens: 512,
             responseMimeType: 'application/json',
             responseSchema: {
                 type: Type.OBJECT,
@@ -57,6 +58,8 @@ export class VertexDetectorClient implements DetectorModelClient {
                                 confidence: { type: Type.NUMBER },
                                 summary: { type: Type.STRING },
                                 evidence: { type: Type.STRING },
+                                // Vertex drops keys the schema doesn't list.
+                                task_description: { type: Type.STRING },
                                 suggested_detectors: {
                                     type: Type.ARRAY,
                                     items: { type: Type.STRING },
