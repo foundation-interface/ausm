@@ -314,21 +314,17 @@ ausm went through many versions before this one, and most of their history lives
 
 <table>
   <tr>
-    <td align="center" valign="top" width="25%">
-      <a href="https://github.com/ozziek"><img src="https://github.com/ozziek.png?size=160" width="80" height="80" alt="ozzie kirkby"><br><b>ozzie kirkby</b></a><br>
-      <sub>started it as PlatformActionHook, macos action hooks in the foundation-interface org</sub>
+    <td align="center" width="25%">
+      <a href="https://github.com/haijunxia"><img src="docs/credits/haijunxia.png" width="80" height="80" alt="haijun xia"><br><sub><b>haijun xia</b></sub></a>
     </td>
-    <td align="center" valign="top" width="25%">
-      <a href="https://github.com/haijunxia"><img src="https://github.com/haijunxia.png?size=160" width="80" height="80" alt="haijun xia"><br><b>haijun xia</b></a><br>
-      <sub>contributed much of the first ausm (now archived)</sub>
+    <td align="center" width="25%">
+      <a href="https://github.com/Rrrima"><img src="docs/credits/rrrima.png" width="80" height="80" alt="rima cao"><br><sub><b>rima cao</b></sub></a>
     </td>
-    <td align="center" valign="top" width="25%">
-      <a href="https://github.com/huangworld"><img src="https://github.com/huangworld.png?size=160" width="80" height="80" alt="zhicheng huang"><br><b>zhicheng huang</b></a><br>
-      <sub>screenshot pipeline and testing</sub>
+    <td align="center" width="25%">
+      <a href="https://github.com/ozziek"><img src="docs/credits/ozziek.png" width="80" height="80" alt="ozzie kirkby"><br><sub><b>ozzie kirkby</b></sub></a>
     </td>
-    <td align="center" valign="top" width="25%">
-      <a href="https://github.com/Rrrima"><img src="https://github.com/Rrrima.png?size=160" width="80" height="80" alt="rima cao"><br><b>rima cao</b></a><br>
-      <sub>rebuilt and maintains this version</sub>
+    <td align="center" width="25%">
+      <a href="https://github.com/huangworld"><img src="docs/credits/huangworld.png" width="80" height="80" alt="zhicheng huang"><br><sub><b>zhicheng huang</b></sub></a>
     </td>
   </tr>
 </table>
