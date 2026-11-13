@@ -315,16 +315,16 @@ ausm went through many versions before this one, and most of their history lives
 <table>
   <tr>
     <td align="center" width="25%">
-      <a href="https://github.com/ozziek"><img src="docs/credits/ozziek.png" width="80" height="80" alt="ozzie kirkby"><br><sub><b>ozzie kirkby</b></sub></a>
-    </td>
-    <td align="center" width="25%">
       <a href="https://github.com/haijunxia"><img src="docs/credits/haijunxia.png" width="80" height="80" alt="haijun xia"><br><sub><b>haijun xia</b></sub></a>
     </td>
     <td align="center" width="25%">
-      <a href="https://github.com/huangworld"><img src="docs/credits/huangworld.png" width="80" height="80" alt="zhicheng huang"><br><sub><b>zhicheng huang</b></sub></a>
+      <a href="https://github.com/Rrrima"><img src="docs/credits/rrrima.png" width="80" height="80" alt="rima cao"><br><sub><b>rima cao</b></sub></a>
     </td>
     <td align="center" width="25%">
-      <a href="https://github.com/Rrrima"><img src="docs/credits/rrrima.png" width="80" height="80" alt="rima cao"><br><sub><b>rima cao</b></sub></a>
+      <a href="https://github.com/ozziek"><img src="docs/credits/ozziek.png" width="80" height="80" alt="ozzie kirkby"><br><sub><b>ozzie kirkby</b></sub></a>
+    </td>
+    <td align="center" width="25%">
+      <a href="https://github.com/huangworld"><img src="docs/credits/huangworld.png" width="80" height="80" alt="zhicheng huang"><br><sub><b>zhicheng huang</b></sub></a>
     </td>
   </tr>
 </table>
