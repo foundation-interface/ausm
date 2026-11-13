@@ -96,7 +96,8 @@ export class CerebrasDetectorClient implements DetectorModelClient {
         const body = {
             model: this.config.model,
             temperature: 0,
-            max_tokens: 256,
+            // Room for a one-sentence task_description, plus models that spend tokens reasoning first.
+            max_tokens: 512,
             response_format: { type: 'json_object' as const },
             messages: [
                 { role: 'system', content: DETECTOR_PIPELINE_SYSTEM_PROMPT },
@@ -116,7 +117,8 @@ export class CerebrasDetectorClient implements DetectorModelClient {
                     response = await fetch(this.endpoint, {
                         method: 'POST',
                         headers: {
-                            Authorization: `Bearer ${this.config.apiKey}`,
+                            // Keyless local servers get no Authorization header.
+                            ...(this.config.apiKey ? { Authorization: `Bearer ${this.config.apiKey}` } : {}),
                             'Content-Type': 'application/json',
                         },
                         body: JSON.stringify(body),

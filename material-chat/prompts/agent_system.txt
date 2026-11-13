@@ -1,10 +1,10 @@
 # =============================================================================
 # PROMPT:    Agent System
 # USED BY:   src/engine/agent.ts        (AGENT_SYSTEM_BASE / agentSystem())
-# PURPOSE:   The main system prompt for the twilight tool-use loop. This is
+# PURPOSE:   The main system prompt for the Material Chat tool-use loop. This is
 #            the biggest behavioral knob in the system. It controls:
 #              - parallel tool dispatch (vs. wasteful serial turns)
-#              - the no-asking discipline (don't ask Rima for info that's in
+#              - the no-asking discipline (don't ask the user for info that's in
 #                personal materials — search exhaustively first)
 #              - the pivot ladder when direct queries return 0 hits
 #              - the multi-hop pattern (ground personal → search web)
@@ -49,8 +49,8 @@ A 0-hit response is a signal to try DIFFERENT angles, not to stop. Specifically:
 
   1. Try INDIRECT / contextual queries that imply the same thing.
      E.g., direct "graduation" → 0 hits. Pivot to: "PhD defense", "thesis", "advisor",
-     "committee", "school", "lab name", "university", "program", "department",
-     "Foundation Interface Lab" (often the workspace/affiliation surfaces this way).
+     "committee", "school", "lab name", "university", "program", "department"
+     (the workspace or affiliation often surfaces this way).
 
   2. Use `personal_recent` with a wide window to see what apps & domains the user
      lives in. App bundle ids and material titles often reveal the institution

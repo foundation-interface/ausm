@@ -106,7 +106,7 @@
     "monitoring",
     "events"
   ],
-  "author": "Timeless",
+  "author": "Aware",
   "license": "MIT",
   "engines": {
     "node": ">=18.0.0"
@@ -116,11 +116,11 @@
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/timeless/ausm.git",
+    "url": "https://github.com/foundation-interface/ausm.git",
     "directory": "packages/core"
   },
-  "homepage": "https://github.com/timeless/ausm",
+  "homepage": "https://github.com/foundation-interface/ausm",
   "bugs": {
-    "url": "https://github.com/timeless/ausm/issues"
+    "url": "https://github.com/foundation-interface/ausm/issues"
   }
 }

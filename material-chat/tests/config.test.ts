@@ -32,7 +32,7 @@ function loadConfig(env: Record<string, string>): any {
   }
 }
 
-const appSupport = path.join(os.homedir(), "Library/Application Support/activity-visualizer");
+const appSupport = path.join(os.homedir(), "Library/Application Support/ausm");
 
 describe("material-chat config", () => {
   test("defaults", () => {
@@ -40,22 +40,20 @@ describe("material-chat config", () => {
     assert.equal(c.anthropicKey, "");
     assert.equal(c.braveKey, "");
     assert.equal(c.port, 8788);
-    assert.equal(c.dbPath, path.join(appSupport, "ausm-materials.db"));
+    assert.equal(c.dbPath, path.join(appSupport, "ausm.db"));
     assert.equal(c.dataDir, path.join(appSupport, "material-chat"));
     assert.equal(c.sessionsPath, path.join(appSupport, "material-chat", "sessions.json"));
     assert.equal(c.preferencesPath, path.join(appSupport, "material-chat", "preferences.md"));
     assert.equal(c.materialUrlScheme, "material://");
-    assert.equal(c.ausmUrl, "http://127.0.0.1:8788");
     assert.deepEqual(c.userAliases, []);
     assert.equal(c.defaultPipeline, 1);
-    assert.deepEqual([c.personalTopK, c.webTopK, c.webFetchTopK], [5, 5, 3]);
+    assert.deepEqual(c.allowedOrigins, []);
   });
 
   test("values supplied by the runtime's HttpHost are honoured", () => {
-    const c = loadConfig({ AUSM_DB: "/tmp/x.db", AUSM_PORT: "9001", AUSM_URL: "http://127.0.0.1:9001", MATERIAL_CHAT_DATA_DIR: "/tmp/mc" });
+    const c = loadConfig({ AUSM_DB: "/tmp/x.db", AUSM_PORT: "9001", MATERIAL_CHAT_DATA_DIR: "/tmp/mc" });
     assert.equal(c.dbPath, "/tmp/x.db");
     assert.equal(c.port, 9001);
-    assert.equal(c.ausmUrl, "http://127.0.0.1:9001");
     assert.equal(c.dataDir, "/tmp/mc");
     assert.equal(c.sessionsPath, "/tmp/mc/sessions.json");
   });
@@ -73,16 +71,14 @@ describe("material-chat config", () => {
 
   test("empty-string path variables fall back to defaults instead of the cwd", () => {
     const c = loadConfig({ AUSM_DB: "", MATERIAL_CHAT_DATA_DIR: "", SESSIONS_PATH: "" });
-    assert.equal(c.dbPath, path.join(appSupport, "ausm-materials.db"));
+    assert.equal(c.dbPath, path.join(appSupport, "ausm.db"));
     assert.equal(c.dataDir, path.join(appSupport, "material-chat"));
     assert.equal(c.sessionsPath, path.join(appSupport, "material-chat", "sessions.json"));
   });
 
   test("empty-string string settings fall back to defaults", () => {
-    const c = loadConfig({ MATERIAL_URL_SCHEME: "", AUSM_URL: "", PLANNER_MODEL: "", SYNTH_MODEL: "" });
+    const c = loadConfig({ MATERIAL_URL_SCHEME: "", SYNTH_MODEL: "" });
     assert.equal(c.materialUrlScheme, "material://");
-    assert.equal(c.ausmUrl, "http://127.0.0.1:8788");
-    assert.ok(c.plannerModel.length > 0);
     assert.ok(c.synthModel.length > 0);
   });
 
@@ -92,8 +88,10 @@ describe("material-chat config", () => {
     assert.equal(loadConfig({ AUSM_PORT: "-1" }).port, 8788);
     assert.equal(loadConfig({ AUSM_PORT: "70000" }).port, 8788);
     assert.equal(loadConfig({ AUSM_PORT: "0" }).port, 0);
-    assert.equal(loadConfig({ PERSONAL_TOP_K: "x" }).personalTopK, 5);
-    assert.equal(loadConfig({ WEB_TOP_K: "7" }).webTopK, 7);
+  });
+
+  test("MATERIAL_CHAT_ALLOWED_ORIGINS is a trimmed comma list", () => {
+    assert.deepEqual(loadConfig({ MATERIAL_CHAT_ALLOWED_ORIGINS: " app://x , https://y.test ,," }).allowedOrigins, ["app://x", "https://y.test"]);
   });
 
   test("SESSIONS_PATH overrides the data dir default", () => {

@@ -18,14 +18,12 @@
  */
 
 import { 
-    AUSMUIElementData, 
-    Point, 
     EventCallback, 
     Rect, 
     ImageData, 
     AUSMApplication 
 } from '../types';
-import { createTextSelectionEvent, DetectionSource, SelectionStage, type TextSelectionEvent, type TextSelectionEventData } from '../events/TextSelectionEvent';
+import { createTextSelectionEvent, DetectionSource, type TextSelectionEvent, type TextSelectionEventData } from '../events/TextSelectionEvent';
 import { createScreenshotEvent, type ScreenshotEvent, type ScreenshotEventData } from '../events/ScreenShotEvent';
 import { createWindowStateEvent, type WindowStateEvent, type WindowStateEventData } from '../events/WindowStateEvent';
 import { createTextInputEvent, type TextInputEvent, type TextInputEventData } from '../events/TextInputEvent';
@@ -37,7 +35,7 @@ import { createTaskEvent, type TaskEvent, type TaskEventData } from '../events/T
 import { DetectorManager } from '../detectors/DetectorManager';
 import { TaskTracker, observationFromDetectorResult } from '../detectors/TaskTracker';
 import { createDetectorEvent, type DetectorEvent, type DetectorEventData, type DetectorsConfig } from '../detectors/types';
-import { createAUSMUIElement, type AUSMEvent, type AUSMUIElement } from '../AUSM';
+import { type AUSMEvent, type AUSMUIElement } from '../AUSM';
 import { HttpHost } from './http-host';
 import { resolvePythonPath, resolveScreenStreamReaderPath } from './resolve-install-paths';
 
@@ -47,16 +45,7 @@ import { resolvePythonPath, resolveScreenStreamReaderPath } from './resolve-inst
 import type { SelectionClient } from './clients/text-selection-client';
 import type { ViewportClient } from './clients/viewport-client';
 import type { TextInputClient } from './clients/text-input-client';
-import type {
-    MaterialClient,
-    MaterialFrameMessage,
-    MaterialCreatedMessage,
-    MaterialFocusedMessage,
-    MaterialUnfocusedMessage,
-    MaterialSaveMessage,
-    MaterialTypeUpdateMessage,
-    MaterialTypeClassifiedMessage,
-} from './clients/material-client';
+import type { MaterialClient } from './clients/material-client';
 import type { MemoryClient } from './clients/memory-client';
 import type { DetectorPipelineClient, DetectorPipelineClientResult } from './clients/detector-pipeline-client';
 
@@ -240,7 +229,7 @@ export interface LoggingConfig {
     eventFrequency?: boolean | number;
 }
 
-/** Detector evaluation (Vertex Gemini or Cerebras). */
+/** Detector evaluation (Vertex Gemini, or Cerebras / any OpenAI-compatible endpoint). */
 export interface DetectorPipelineRuntimeConfig {
     /** Enable the detector pipeline. Default: true when Vertex projectId or Cerebras apiKey is set. */
     enabled?: boolean;
@@ -248,9 +237,9 @@ export interface DetectorPipelineRuntimeConfig {
     provider?: 'vertex' | 'cerebras';
     /** Google Cloud project ID. Falls back to TASK_DETECTOR_PROJECT_ID / AUSM_DETECTOR_PROJECT_ID. */
     projectId?: string;
-    /** Cerebras API key. Falls back to CEREBRAS_API_KEY. */
+    /** OpenAI-compatible API key. Falls back to CEREBRAS_API_KEY. Optional when apiBaseUrl is a non-Cerebras (e.g. local) server. */
     apiKey?: string;
-    /** Override Cerebras API base URL. Falls back to CEREBRAS_BASE_URL. */
+    /** OpenAI-compatible base URL (default: Cerebras). Falls back to CEREBRAS_BASE_URL. */
     apiBaseUrl?: string;
     /** Vertex AI region (default: global) */
     location?: string;
@@ -322,12 +311,21 @@ export interface AUSMRuntimeConfig {
         enabled?: boolean;
         port?: number;
     };
-    /** Session/prefs data dir for the Material Chat host. */
+    /**
+     * Material Chat host. It listens on 127.0.0.1 and only answers pages from localhost or
+     * file:// (and requests with no Origin, e.g. the main process); list any other renderer
+     * origin, such as a custom `app://` scheme, in `allowedOrigins`.
+     */
     materialChat?: {
         enabled?: boolean;
+        /** Session/prefs data dir. */
         dataDir?: string;
+        allowedOrigins?: string[];
     };
 }
+
+/** Hosted Cerebras API (mirrors CEREBRAS_DEFAULT_BASE_URL in @ausm/detector-pipeline, which loads lazily). */
+const CEREBRAS_DEFAULT_BASE_URL = 'https://api.cerebras.ai/v1';
 
 type LoggingModule = Exclude<keyof LoggingConfig, 'global_default' | 'eventFrequency'>;
 
@@ -355,6 +353,15 @@ function dispatchToCallbacks<T>(callbacks: EventCallback<T>[], event: T, label: 
             console.error(`[AUSM] ${label} callback threw:`, (err as Error)?.message ?? err);
         }
     }
+}
+
+/** Add a callback to a list and return a function that removes it again. */
+function addRemovable<T>(callbacks: EventCallback<T>[], callback: EventCallback<T>): () => void {
+    callbacks.push(callback);
+    return () => {
+        const i = callbacks.indexOf(callback);
+        if (i >= 0) callbacks.splice(i, 1);
+    };
 }
 
 // ============================================================================
@@ -426,7 +433,7 @@ class EventFrequencyMonitor {
 interface Detector<T> {
     start(): void;
     stop(): void;
-    addCallback(callback: EventCallback<T>): void;
+    addCallback(callback: EventCallback<T>): () => void;
     emit(event: T): void;
 }
 
@@ -463,8 +470,8 @@ class TextSelectionDetectorImpl implements Detector<TextSelectionEvent> {
         }
     }
 
-    addCallback(callback: EventCallback<TextSelectionEvent>): void {
-        this.callbacks.push(callback);
+    addCallback(callback: EventCallback<TextSelectionEvent>): () => void {
+        return addRemovable(this.callbacks, callback);
     }
 
     emit(event: TextSelectionEvent): void {
@@ -732,20 +739,6 @@ class CameraStreamingManagerImpl {
     }
 }
 
-// Type for child process
-interface ChildProcessType {
-    pid?: number;
-    killed: boolean;
-    kill(signal?: string): boolean;
-    on(event: string, listener: (...args: unknown[]) => void): void;
-}
-
-// Type for child process with streams
-interface ChildProcessWithStreams extends ChildProcessType {
-    stdout?: NodeJS.ReadableStream | null;
-    stderr?: NodeJS.ReadableStream | null;
-}
-
 class ScreenshotDetectorImpl implements Detector<ScreenshotEvent> {
     private callbacks: EventCallback<ScreenshotEvent>[] = [];
     private running = false;
@@ -774,8 +767,8 @@ class ScreenshotDetectorImpl implements Detector<ScreenshotEvent> {
         console.log('[AUSM] ScreenshotDetector stopped');
     }
 
-    addCallback(callback: EventCallback<ScreenshotEvent>): void {
-        this.callbacks.push(callback);
+    addCallback(callback: EventCallback<ScreenshotEvent>): () => void {
+        return addRemovable(this.callbacks, callback);
     }
 
     emit(event: ScreenshotEvent): void {
@@ -845,8 +838,8 @@ class ClipboardMonitorImpl implements Detector<CopyPasteEvent> {
         console.log('[AUSM] ClipboardMonitor stopped');
     }
 
-    addCallback(callback: EventCallback<CopyPasteEvent>): void {
-        this.callbacks.push(callback);
+    addCallback(callback: EventCallback<CopyPasteEvent>): () => void {
+        return addRemovable(this.callbacks, callback);
     }
 
     emit(event: CopyPasteEvent): void {
@@ -928,12 +921,12 @@ class ApplicationStateDetectorImpl implements Detector<WindowStateEvent> {
         this.viewportClients = [];
     }
 
-    addCallback(callback: EventCallback<WindowStateEvent>): void {
-        this.callbacks.push(callback);
+    addCallback(callback: EventCallback<WindowStateEvent>): () => void {
+        return addRemovable(this.callbacks, callback);
     }
 
-    addSpaceChangeCallback(callback: EventCallback<SpaceChangeEvent>): void {
-        this.spaceChangeCallbacks.push(callback);
+    addSpaceChangeCallback(callback: EventCallback<SpaceChangeEvent>): () => void {
+        return addRemovable(this.spaceChangeCallbacks, callback);
     }
 
     emit(event: WindowStateEvent): void {
@@ -1024,8 +1017,8 @@ class TextInputDetectorImpl implements Detector<TextInputEvent> {
         }
     }
 
-    addCallback(callback: EventCallback<TextInputEvent>): void {
-        this.callbacks.push(callback);
+    addCallback(callback: EventCallback<TextInputEvent>): () => void {
+        return addRemovable(this.callbacks, callback);
     }
 
     emit(event: TextInputEvent): void {
@@ -1132,8 +1125,8 @@ class CursorPlusPlusDetectorImpl implements Detector<CursorPlusPlusEvent> {
         console.log('[AUSM] CursorPlusPlus stopped');
     }
 
-    addCallback(callback: EventCallback<CursorPlusPlusEvent>): void {
-        this.callbacks.push(callback);
+    addCallback(callback: EventCallback<CursorPlusPlusEvent>): () => void {
+        return addRemovable(this.callbacks, callback);
     }
 
     emit(event: CursorPlusPlusEvent): void {
@@ -1228,8 +1221,8 @@ class MaterialDetectorImpl implements Detector<MaterialEvent> {
     start(): void { this.running = true; }
     stop(): void { this.running = false; }
 
-    addCallback(callback: EventCallback<MaterialEvent>): void {
-        this.callbacks.push(callback);
+    addCallback(callback: EventCallback<MaterialEvent>): () => void {
+        return addRemovable(this.callbacks, callback);
     }
 
     emit(event: MaterialEvent): void {
@@ -1335,9 +1328,7 @@ class MaterialManagerImpl {
             // first unfocus. Awaited so the cache is warm before events flow.
             if (this.memoryClient) {
                 try {
-                    const [matWeights] = await Promise.all([
-                        this.memoryClient.getMaterialWeights(),
-                    ]);
+                    const matWeights = await this.memoryClient.getMaterialWeights();
                     for (const [id, w] of Object.entries(matWeights)) {
                         this.materialWeightCache.set(id, w);
                     }
@@ -1733,6 +1724,9 @@ export class AUSMRuntime {
     private initPromise: Promise<void> | null = null;
     /** Bumped by shutdown() so an initialize() still in progress stops starting things. */
     private lifecycleGeneration = 0;
+    /** Removers for callbacks initialize() wires between internal pieces; run by shutdown(). */
+    private internalUnsubs: Array<() => void> = [];
+    private warnedNoDbPath = false;
 
     constructor(config: AUSMRuntimeConfig = {}) {
         this.config = config;
@@ -1754,6 +1748,7 @@ export class AUSMRuntime {
         this.materialManagerImpl = new MaterialManagerImpl(config, this.materialDetector);
         this.detectorManager = new DetectorManager(config.detectors);
 
+        // Sensor events are counted here (native and emitX() alike); emitX() must not count again.
         if (this.frequencyMonitor) {
             const fm = this.frequencyMonitor;
             this.textSelectionDetector.addCallback(() => fm.record('textSelection'));
@@ -1770,7 +1765,12 @@ export class AUSMRuntime {
     /** Initialize and start all event sources. Repeat or concurrent calls share one run. */
     initialize(): Promise<void> {
         if (!this.initPromise) {
-            const run = this.doInitialize();
+            const generation = this.lifecycleGeneration;
+            const run = this.doInitialize().catch((err) => {
+                // Stop whatever already started so a retry doesn't start it a second time.
+                if (generation === this.lifecycleGeneration) this.shutdown();
+                throw err;
+            });
             this.initPromise = run;
             run.catch(() => {
                 if (this.initPromise === run) this.initPromise = null;
@@ -1866,10 +1866,11 @@ export class AUSMRuntime {
             // Wire screenshot persistence: save to memory on every FINISHED screenshot
             // eslint-disable-next-line @typescript-eslint/no-require-imports
             const fsForScreenshot = require('fs') as typeof import('fs');
-            this.screenshotDetector.addCallback((event: ScreenshotEvent) => {
+            const shotLog = isLogging(this.config, 'screenshot');
+            this.internalUnsubs.push(this.screenshotDetector.addCallback((event: ScreenshotEvent) => {
                 if (!this.memoryClient) return;
                 if (event.status !== 'SCREENSHOT_FINISHED') {
-                    console.log(`[AUSM] Screenshot event (non-FINISHED): status=${event.status} — skipping memory save`);
+                    if (shotLog) console.log(`[AUSM] Screenshot event (non-FINISHED): status=${event.status} — skipping memory save`);
                     return;
                 }
 
@@ -1883,14 +1884,14 @@ export class AUSMRuntime {
                     width = event.imageData.width;
                     height = event.imageData.height;
                     mimeType = event.imageData.mimeType ?? 'image/jpeg';
-                    console.log(`[AUSM] Screenshot memory: using inline imageData (${width}x${height})`);
+                    if (shotLog) console.log(`[AUSM] Screenshot memory: using inline imageData (${width}x${height})`);
                 } else if (event.imagePath) {
                     try {
                         if (fsForScreenshot.existsSync(event.imagePath)) {
                             dataBase64 = fsForScreenshot.readFileSync(event.imagePath).toString('base64');
                             width = event.imageWidth ?? 0;
                             height = event.imageHeight ?? 0;
-                            console.log(`[AUSM] Screenshot memory: read from imagePath (${width}x${height}, ${Math.round(dataBase64.length / 1024)}KB base64)`);
+                            if (shotLog) console.log(`[AUSM] Screenshot memory: read from imagePath (${width}x${height}, ${Math.round(dataBase64.length / 1024)}KB base64)`);
                         } else {
                             console.warn(`[AUSM] Screenshot memory: imagePath not found: ${event.imagePath}`);
                         }
@@ -1919,11 +1920,11 @@ export class AUSMRuntime {
                         bounds: event.bounds,
                         screenshotType: event.type ?? null,
                     });
-                    console.log(`[AUSM] Screenshot saved to memory: id=${screenshotId} (${width}x${height})`);
+                    if (shotLog) console.log(`[AUSM] Screenshot saved to memory: id=${screenshotId} (${width}x${height})`);
                 } catch (err) {
                     console.warn('[AUSM] Failed to persist screenshot to memory:', (err as Error).message);
                 }
-            });
+            }));
 
             console.log('[AUSM] Memory service started');
 
@@ -1938,6 +1939,11 @@ export class AUSMRuntime {
         checkpoint('Memory service started');
 
         if (this.config.http?.enabled || this.config.materialChat?.enabled) {
+            if (!this.config.materialManager?.dbPath && !this.warnedNoDbPath) {
+                this.warnedNoDbPath = true;
+                console.warn('[AUSM] HTTP host / Material Chat is enabled but materialManager.dbPath is unset — '
+                    + 'it will open its own empty in-memory DB and see no materials. Set materialManager.dbPath to share one database.');
+            }
             this.httpHost = new HttpHost({
                 enabled: true,
                 port: this.config.http?.port ?? 8788,
@@ -1977,9 +1983,9 @@ export class AUSMRuntime {
 
             // Wire window state events into the material manager
             if (this.materialManagerImpl.isRunning()) {
-                this.applicationStateDetector.addCallback((event: WindowStateEvent) => {
+                this.internalUnsubs.push(this.applicationStateDetector.addCallback((event: WindowStateEvent) => {
                     this.materialManagerImpl.handleWindowEvent(event);
-                });
+                }));
             }
         } catch (err) {
             console.warn('[AUSM] Material manager failed to start:', (err as Error).message);
@@ -2020,6 +2026,10 @@ export class AUSMRuntime {
             ?? env('AUSM_DETECTOR_PROJECT_ID')
             ?? '';
         const apiKey = pick(dpConfig.apiKey) ?? env('CEREBRAS_API_KEY') ?? '';
+        const apiBaseUrl = pick(dpConfig.apiBaseUrl) ?? env('CEREBRAS_BASE_URL');
+        // A non-Cerebras base URL may be a keyless local server (Ollama, vLLM, LM Studio).
+        const keylessEndpoint = Boolean(apiBaseUrl) && apiBaseUrl!.replace(/\/+$/, '') !== CEREBRAS_DEFAULT_BASE_URL;
+        const openAIUsable = Boolean(apiKey) || keylessEndpoint;
         const rawProvider = pick(dpConfig.provider) ?? env('TASK_DETECTOR_PROVIDER');
         const requestedProvider = (rawProvider ?? '').toLowerCase();
         if (rawProvider && requestedProvider !== 'cerebras' && requestedProvider !== 'vertex') {
@@ -2028,11 +2038,12 @@ export class AUSMRuntime {
         const provider: 'vertex' | 'cerebras' =
             requestedProvider === 'cerebras' || requestedProvider === 'vertex'
                 ? requestedProvider
-                : (apiKey && !projectId ? 'cerebras' : 'vertex');
-        const enabled = dpConfig.enabled ?? (provider === 'cerebras' ? Boolean(apiKey) : Boolean(projectId));
+                : (openAIUsable && !projectId ? 'cerebras' : 'vertex');
+        const enabled = dpConfig.enabled ?? (provider === 'cerebras' ? openAIUsable : Boolean(projectId));
         if (!enabled) return;
-        if (provider === 'cerebras' && !apiKey) {
-            console.warn('[AUSM] Detector pipeline provider=cerebras but no CEREBRAS_API_KEY');
+        if (provider === 'cerebras' && !openAIUsable) {
+            console.warn('[AUSM] Detector pipeline: OpenAI-compatible endpoint has no CEREBRAS_API_KEY '
+                + '(a key is optional only when apiBaseUrl/CEREBRAS_BASE_URL points at a non-Cerebras server)');
             return;
         }
         if (provider === 'vertex' && !projectId) {
@@ -2044,12 +2055,13 @@ export class AUSMRuntime {
             // eslint-disable-next-line @typescript-eslint/no-require-imports
             const { createDetectorPipelineClient } = require('@ausm/core/clients');
             const model = pick(dpConfig.model) ?? env('TASK_DETECTOR_MODEL');
-            console.log(`[AUSM] Detector pipeline: ${provider} / ${model || (provider === 'cerebras' ? 'gemma-4-31b' : 'gemini-2.0-flash')}`);
+            const providerLabel = provider === 'cerebras' ? 'OpenAI-compatible endpoint' : provider;
+            console.log(`[AUSM] Detector pipeline: ${providerLabel} / ${model || (provider === 'cerebras' ? 'gemma-4-31b' : 'gemini-2.0-flash')}`);
             const dpClient: DetectorPipelineClient = createDetectorPipelineClient({
                 provider,
                 projectId,
                 apiKey,
-                apiBaseUrl: pick(dpConfig.apiBaseUrl) ?? env('CEREBRAS_BASE_URL'),
+                apiBaseUrl,
                 location: pick(dpConfig.location) ?? env('TASK_DETECTOR_LOCATION'),
                 model,
                 debug: isLogging(this.config, 'detectorPipeline'),
@@ -2127,14 +2139,25 @@ export class AUSMRuntime {
                 });
             }
 
+            // Latest frame per material, as a small LRU: only the focused material's frame is
+            // ever replayed, so a handful of recent ones is plenty (base64 JPEGs are large).
+            const DP_FRAME_CACHE_MAX = 8;
             const dpLatestFrames = new Map<string, string>();
+            const cacheFrame = (materialId: string, frame: string) => {
+                dpLatestFrames.delete(materialId);
+                dpLatestFrames.set(materialId, frame);
+                if (dpLatestFrames.size > DP_FRAME_CACHE_MAX) {
+                    dpLatestFrames.delete(dpLatestFrames.keys().next().value as string);
+                }
+            };
             let dpFocusedMaterialId: string | null = null;
+            const feeders: Array<() => void> = [];
 
             const fetchFrameForPipeline = async (materialId: string) => {
                 try {
                     const frame = await this.getMaterialLatestFrame(materialId) as { dataBase64?: string } | null;
                     if (frame?.dataBase64) {
-                        dpLatestFrames.set(materialId, frame.dataBase64);
+                        cacheFrame(materialId, frame.dataBase64);
                         dpClient.onScreenFrameAvailable(frame.dataBase64);
                     }
                 } catch {
@@ -2144,7 +2167,7 @@ export class AUSMRuntime {
 
             const offerMaterialFrame = (materialId: string, frameDataBase64?: string | null) => {
                 if (frameDataBase64) {
-                    dpLatestFrames.set(materialId, frameDataBase64);
+                    cacheFrame(materialId, frameDataBase64);
                     dpClient.onScreenFrameAvailable(frameDataBase64);
                     return;
                 }
@@ -2156,7 +2179,7 @@ export class AUSMRuntime {
                 }
             };
 
-            this.materialDetector.addCallback((e: MaterialEvent) => {
+            feeders.push(this.materialDetector.addCallback((e: MaterialEvent) => {
                 if (isStartupBurst()) return;
 
                 if (
@@ -2182,7 +2205,7 @@ export class AUSMRuntime {
                 }
 
                 if (e.frameDataBase64) {
-                    dpLatestFrames.set(e.materialId, e.frameDataBase64);
+                    cacheFrame(e.materialId, e.frameDataBase64);
                 }
 
                 if (e.materialId !== dpFocusedMaterialId) {
@@ -2198,9 +2221,9 @@ export class AUSMRuntime {
                     appMetadata: e.appMetadata ?? null,
                     focusWeight: e.focusWeight ?? null,
                 });
-            });
+            }));
 
-            this.textInputDetector.addCallback((e: TextInputEvent) => {
+            feeders.push(this.textInputDetector.addCallback((e: TextInputEvent) => {
                 if (isStartupBurst()) return;
                 if (e.status) {
                     dpClient.pushTextInputEvent({
@@ -2209,9 +2232,9 @@ export class AUSMRuntime {
                         application: e.sourceElement?.application ?? null,
                     });
                 }
-            });
+            }));
 
-            this.applicationStateDetector.addCallback((e: WindowStateEvent) => {
+            feeders.push(this.applicationStateDetector.addCallback((e: WindowStateEvent) => {
                 if (isStartupBurst()) return;
                 if (e.state) {
                     dpClient.pushWindowStateEvent({
@@ -2222,9 +2245,9 @@ export class AUSMRuntime {
                         windowId: e.windowId,
                     });
                 }
-            });
+            }));
 
-            this.textSelectionDetector.addCallback((e: TextSelectionEvent) => {
+            feeders.push(this.textSelectionDetector.addCallback((e: TextSelectionEvent) => {
                 if (isStartupBurst()) return;
                 if (!e.selectedText) return;
                 dpClient.pushTextSelectionEvent({
@@ -2234,9 +2257,9 @@ export class AUSMRuntime {
                     selectionMethod: e.selectionMethod ?? null,
                     elementType: e.sourceElement?.type ?? null,
                 });
-            });
+            }));
 
-            this.clipboardMonitorDetector.addCallback((e: CopyPasteEvent) => {
+            feeders.push(this.clipboardMonitorDetector.addCallback((e: CopyPasteEvent) => {
                 if (isStartupBurst()) return;
                 if (e.action) {
                     dpClient.pushCopyPasteEvent({
@@ -2244,9 +2267,9 @@ export class AUSMRuntime {
                         text: e.content,
                     });
                 }
-            });
+            }));
 
-            this.screenshotDetector.addCallback((e: ScreenshotEvent) => {
+            feeders.push(this.screenshotDetector.addCallback((e: ScreenshotEvent) => {
                 if (isStartupBurst()) return;
                 if (e.status) {
                     dpClient.pushScreenshotEvent({
@@ -2254,10 +2277,10 @@ export class AUSMRuntime {
                         type: e.type,
                     });
                 }
-            });
+            }));
 
             const DP_CURSOR_ACTIONS = new Set(['CLICK', 'DOUBLE_CLICK', 'RIGHT_CLICK', 'SCROLL', 'HOLD_START', 'HOLD_END']);
-            this.cursorPlusPlusDetector.addCallback((e: CursorPlusPlusEvent) => {
+            feeders.push(this.cursorPlusPlusDetector.addCallback((e: CursorPlusPlusEvent) => {
                 if (isStartupBurst()) return;
                 const action = e.action ?? '';
                 if (!DP_CURSOR_ACTIONS.has(action)) return;
@@ -2269,15 +2292,17 @@ export class AUSMRuntime {
                     uiElementRole: e.uiElementRole,
                     uiElementLabel: e.uiElementLabel,
                 });
-            });
+            }));
 
             if (!dpClient.start()) {
                 // The service already reported why (missing/invalid credentials) via 'error'.
                 console.warn('[AUSM] Detector pipeline failed to start — detector and task events are disabled');
+                for (const unsub of feeders) unsub();
                 dpClient.cleanup();
                 this.detectorPipelineClient = null;
                 return;
             }
+            this.internalUnsubs.push(...feeders);
 
             console.log(
                 `[AUSM] Detector pipeline started (rapid-task) — ignoring startup window census for ${DETECTOR_STARTUP_IGNORE_MS}ms`,
@@ -2293,32 +2318,12 @@ export class AUSMRuntime {
         }
     }
 
-    /** Wait for a service to be ready with polling */
-    private async waitForServiceReady(
-        checkFn: () => Promise<boolean>,
-        maxWait: number,
-        pollInterval: number
-    ): Promise<number> {
-        const startTime = Date.now();
-        while (Date.now() - startTime < maxWait) {
-            try {
-                if (await checkFn()) {
-                    return Date.now() - startTime;
-                }
-            } catch {
-                // Ignore errors during polling
-            }
-            await new Promise(resolve => setTimeout(resolve, pollInterval));
-        }
-        return Date.now() - startTime;
-    }
-
-
     /** Stop all event sources */
     shutdown(): void {
         console.log('[AUSM] Shutting down...');
         this.lifecycleGeneration++;
         this.initPromise = null;
+        for (const unsub of this.internalUnsubs.splice(0)) unsub();
         this.frequencyMonitor?.stop();
         // Material manager stop is async (process shutdown) — fire-and-forget.
         this.materialManagerImpl.stop().catch(() => {});
@@ -2351,10 +2356,6 @@ export class AUSMRuntime {
         this.screenStreamingManager.stop().catch(() => {});
         this.cameraStreamingManager.stop().catch(() => {});
     }
-
-    // ========================================================================
-    // Selection CV Service API
-    // ========================================================================
 
     // ========================================================================
     // Screen Streaming API
@@ -2586,8 +2587,8 @@ export class AUSMRuntime {
      * Subscribe to typed material events (FRAME_CAPTURED, MATERIAL_CREATED, MATERIAL_FOCUSED, MATERIAL_UNFOCUSED).
      * This is the preferred API — events are typed as MaterialEvent.
      */
-    onMaterialEvent(callback: EventCallback<MaterialEvent>): void {
-        this.materialDetector.addCallback(callback);
+    onMaterialEvent(callback: EventCallback<MaterialEvent>): () => void {
+        return this.materialDetector.addCallback(callback);
     }
 
     /**
@@ -2610,43 +2611,43 @@ export class AUSMRuntime {
     }
 
     // ========================================================================
-    // Event Subscriptions
+    // Event Subscriptions (each returns a function that unsubscribes)
     // ========================================================================
 
-    onTextSelectionEvent(callback: EventCallback<TextSelectionEvent>): void {
-        this.textSelectionDetector.addCallback(callback);
+    onTextSelectionEvent(callback: EventCallback<TextSelectionEvent>): () => void {
+        return this.textSelectionDetector.addCallback(callback);
     }
 
-    onScreenshotEvent(callback: EventCallback<ScreenshotEvent>): void {
-        this.screenshotDetector.addCallback(callback);
+    onScreenshotEvent(callback: EventCallback<ScreenshotEvent>): () => void {
+        return this.screenshotDetector.addCallback(callback);
     }
 
-    onCopyPasteEvent(callback: EventCallback<CopyPasteEvent>): void {
-        this.clipboardMonitorDetector.addCallback(callback);
+    onCopyPasteEvent(callback: EventCallback<CopyPasteEvent>): () => void {
+        return this.clipboardMonitorDetector.addCallback(callback);
     }
 
-    onApplicationSwitchEvent(callback: EventCallback<WindowStateEvent>): void {
-        this.applicationStateDetector.addCallback(callback);
+    onApplicationSwitchEvent(callback: EventCallback<WindowStateEvent>): () => void {
+        return this.applicationStateDetector.addCallback(callback);
     }
 
-    onSpaceChangeEvent(callback: EventCallback<SpaceChangeEvent>): void {
-        this.applicationStateDetector.addSpaceChangeCallback(callback);
+    onSpaceChangeEvent(callback: EventCallback<SpaceChangeEvent>): () => void {
+        return this.applicationStateDetector.addSpaceChangeCallback(callback);
     }
 
-    subscribeToTextInputEvent(callback: EventCallback<TextInputEvent>): void {
-        this.textInputDetector.addCallback(callback);
+    subscribeToTextInputEvent(callback: EventCallback<TextInputEvent>): () => void {
+        return this.textInputDetector.addCallback(callback);
     }
 
-    onCursorPlusPlusEvent(callback: EventCallback<CursorPlusPlusEvent>): void {
-        this.cursorPlusPlusDetector.addCallback(callback);
+    onCursorPlusPlusEvent(callback: EventCallback<CursorPlusPlusEvent>): () => void {
+        return this.cursorPlusPlusDetector.addCallback(callback);
     }
 
-    onDetectorEvent(callback: EventCallback<DetectorEvent>): void {
-        this.detectorCallbacks.push(callback);
+    onDetectorEvent(callback: EventCallback<DetectorEvent>): () => void {
+        return addRemovable(this.detectorCallbacks, callback);
     }
 
-    onTaskEvent(callback: EventCallback<TaskEvent>): void {
-        this.taskCallbacks.push(callback);
+    onTaskEvent(callback: EventCallback<TaskEvent>): () => void {
+        return addRemovable(this.taskCallbacks, callback);
     }
 
     // ========================================================================
@@ -2654,44 +2655,36 @@ export class AUSMRuntime {
     // ========================================================================
 
     emitTextSelectionEvent(data: TextSelectionEventData): void {
-        this.frequencyMonitor?.record('textSelection');
         this.textSelectionDetector.emit(createTextSelectionEvent(data));
     }
 
     emitScreenshotEvent(data: ScreenshotEventData): void {
-        this.frequencyMonitor?.record('screenshot');
         this.screenshotDetector.emit(createScreenshotEvent(data));
     }
 
     emitCopyPasteEvent(data: CopyPasteEventData): void {
-        this.frequencyMonitor?.record('copyPaste');
         this.clipboardMonitorDetector.emit(createCopyPasteEvent(data));
     }
 
     emitWindowStateEvent(data: WindowStateEventData): void {
-        this.frequencyMonitor?.record('windowState');
         this.applicationStateDetector.emit(createWindowStateEvent(data));
     }
 
     emitMaterialEvent(data: MaterialEventData): void {
-        this.frequencyMonitor?.record('material');
         this.materialDetector.emit(createMaterialEvent(data));
     }
 
     emitTextInputEvent(data: TextInputEventData): void {
-        this.frequencyMonitor?.record('textInput');
         this.textInputDetector.emit(createTextInputEvent(data));
     }
 
 
 
     emitCursorPlusPlusEvent(data: CursorPlusPlusEventData): void {
-        this.frequencyMonitor?.record('cursorPlusPlus');
         this.cursorPlusPlusDetector.emit(createCursorPlusPlusEvent(data));
     }
 
     emitSpaceChangeEvent(data: SpaceChangeEventData): void {
-        this.frequencyMonitor?.record('spaceChange');
         this.applicationStateDetector.emitSpaceChange(createSpaceChangeEvent(data));
     }
 
@@ -2744,5 +2737,4 @@ export function createRuntime(config?: AUSMRuntimeConfig): AUSMRuntime {
 /** Default runtime singleton (with native selection enabled) */
 export const ausmRuntime = new AUSMRuntime({
     textSelection: { enableNativeSelection: true },
-    logging: { eventFrequency: true },
 });

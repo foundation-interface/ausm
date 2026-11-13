@@ -5,13 +5,38 @@
  * parses YAML frontmatter + NL body, and manages enabled/disabled state.
  */
 
-import { DetectorEntry, DetectorFrontmatter, DetectorsConfig, DetectorEntryConfig } from './types';
+import { DetectorEntry, DetectorFrontmatter, DetectorsConfig } from './types';
 
 // ============================================================================
 // Frontmatter Parser
 // ============================================================================
 
 const FRONTMATTER_RE = /^---\r?\n([\s\S]*?)\r?\n---\r?\n?([\s\S]*)$/;
+
+/**
+ * Drop YAML comments, as a YAML parser would: whole `# …` lines, and a trailing ` # …` after a
+ * value (a `#` with whitespace before it, outside quotes). `issue#42` and `"see #42"` survive.
+ */
+export function stripYamlComments(yamlBlock: string): string {
+    return yamlBlock.split(/\r?\n/).map((line) => {
+        let quote: string | null = null;
+        for (let i = 0; i < line.length; i++) {
+            const ch = line[i];
+            if (quote) {
+                // `''` inside a single-quoted string is an escaped quote, not the end.
+                if (ch === "'" && quote === "'" && line[i + 1] === "'") i++;
+                else if (ch === quote) quote = null;
+            } else if (ch === '"' || ch === "'") {
+                // Only a quote that opens a value (after `: `, `[`, `,` or at the start) starts a string.
+                const before = line.slice(0, i).trimEnd();
+                if (before === '' || before.endsWith(':') || before.endsWith('[') || before.endsWith(',')) quote = ch;
+            } else if (ch === '#' && (i === 0 || line[i - 1] === ' ' || line[i - 1] === '\t')) {
+                return line.slice(0, i).trimEnd();
+            }
+        }
+        return line;
+    }).join('\n');
+}
 
 /**
  * Read a single-line scalar `key: value`. `[ \t]*` (not `\s*`) keeps an empty
@@ -37,7 +62,7 @@ export function parseDetectorFrontmatter(raw: string): { frontmatter: DetectorFr
     const match = raw.replace(/^\uFEFF/, '').match(FRONTMATTER_RE);
     if (!match) return null;
 
-    const yamlBlock = match[1];
+    const yamlBlock = stripYamlComments(match[1]);
     const body = match[2].trim();
 
     const name = readScalar(yamlBlock, 'name');
@@ -207,6 +232,7 @@ export class DetectorManager {
             const entries = await loadDetectorsFromDir(dir, { maxFileBytes });
             for (const entry of entries) {
                 const entryConfig = this.config.entries?.[entry.name];
+                // Config can only switch a detector off; a file that says `enabled: false` stays off.
                 if (entryConfig?.enabled === false) {
                     entry.enabled = false;
                 }

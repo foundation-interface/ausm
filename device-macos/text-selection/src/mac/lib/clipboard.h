@@ -28,3 +28,17 @@ bool WriteClipboard(const std::string &content);
  * @return The change count of NSPasteboard
  */
 int64_t GetClipboardSequence();
+
+/**
+ * Deep-copies every item on the general pasteboard (all types -> data), so a
+ * synthetic Cmd+C can be undone without losing images, files or rich text.
+ * @return The copied items (empty array if the pasteboard was empty)
+ */
+NSArray<NSPasteboardItem *> *SnapshotClipboard();
+
+/**
+ * Replaces the general pasteboard with a snapshot from SnapshotClipboard()
+ * (an empty snapshot leaves the pasteboard empty).
+ * @return true if successful, false otherwise
+ */
+bool RestoreClipboard(NSArray<NSPasteboardItem *> *snapshot);

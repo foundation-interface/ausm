@@ -69,7 +69,7 @@ describe('CerebrasDetectorClient', () => {
         const body = JSON.parse(String(calls[0].init.body));
         assert.equal(body.model, 'm1');
         assert.equal(body.temperature, 0);
-        assert.equal(body.max_tokens, 256);
+        assert.equal(body.max_tokens, 512);
         assert.deepEqual(body.response_format, { type: 'json_object' });
         assert.equal(body.messages[0].role, 'system');
         assert.equal(body.messages[0].content, DETECTOR_PIPELINE_SYSTEM_PROMPT);

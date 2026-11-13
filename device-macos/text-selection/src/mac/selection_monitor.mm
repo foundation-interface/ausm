@@ -306,7 +306,6 @@ class SelectionMonitor : public Napi::ObjectWrap<SelectionMonitor>
 
     std::thread event_thread;
 
-    bool is_triggered_by_user = false;
     bool is_enabled_mouse_move_event = false;
     bool is_selection_passive_mode = false;
     bool is_enabled_clipboard = true;
@@ -468,7 +467,8 @@ void SelectionMonitor::Start(const Napi::CallbackInfo &info)
 
         mouse_keyboard_running = true;
         running = true;
-        is_enabled_mouse_move_event = false;
+        // is_enabled_mouse_move_event is left as configured: the JS wrapper
+        // applies start({ enableMouseMoveEvent }) before calling Start().
 
         if (napi_add_env_cleanup_hook(env, EnvCleanupHook, this) == napi_ok)
         {
@@ -724,21 +724,16 @@ Napi::Value SelectionMonitor::GetCurrentSelection(const Napi::CallbackInfo &info
         }
 
         TextSelectionInfo selectionInfo;
-        is_triggered_by_user = true;
         if (!GetSelectedText(frontApp, selectionInfo) || IsTrimmedEmpty(selectionInfo.text))
         {
-            is_triggered_by_user = false;
             return env.Null();
         }
-
-        is_triggered_by_user = false;
 
         return CreateSelectionResultObject(env, selectionInfo);
     }
     catch (const std::exception &e)
     {
         Napi::Error::New(env, e.what()).ThrowAsJavaScriptException();
-        is_triggered_by_user = false;
         return env.Null();
     }
     }
@@ -911,8 +906,9 @@ bool SelectionMonitor::GetTextViaClipboard(NSRunningApplication *frontApp, TextS
     }
 
     clipboard_sequence = newClipboardSequence;
-    std::string originalContent;
-    bool hasOriginalContent = ReadClipboard(originalContent);
+    // Snapshot every item/type, not just the string, so the synthetic Cmd+C
+    // doesn't destroy an image/file/rich-text clipboard.
+    NSArray<NSPasteboardItem *> *originalItems = SnapshotClipboard();
 
     if (!SendCopyKey(frontApp.processIdentifier))
         return false;
@@ -934,23 +930,17 @@ bool SelectionMonitor::GetTextViaClipboard(NSRunningApplication *frontApp, TextS
         return false;
 
     std::string newContent;
-    if (!ReadClipboard(newContent) || IsTrimmedEmpty(newContent))
-    {
-        if (hasOriginalContent)
-        {
-            WriteClipboard(originalContent);
-        }
+    bool gotText = ReadClipboard(newContent) && !IsTrimmedEmpty(newContent);
 
+    // Always put the user's clipboard back (including when it held no string),
+    // and record our own write so it isn't mistaken for a user copy next time.
+    RestoreClipboard(originalItems);
+    clipboard_sequence = GetClipboardSequence();
+
+    if (!gotText)
         return false;
-    }
 
     selectionInfo.text = newContent;
-
-    if (hasOriginalContent && originalContent != newContent)
-    {
-        WriteClipboard(originalContent);
-    }
-
     return true;
 }
 

@@ -8,6 +8,9 @@
 ///             `permission` lines when Accessibility is granted/revoked
 ///   stderr -> diagnostics only (never typed text)
 ///
+/// Usage: TextInputHelper [--max-text-length N]   (cap `text` at N characters, default 100 000;
+///        longer values are cut and flagged with "textTruncated": true)
+///
 /// Password fields (AXSecureTextField) are never reported.
 /// Thin wrapper over TextInputMonitorKit (all logic lives there).
 /// Exits on SIGTERM/SIGINT, stdin EOF (when stdin is a pipe), or when the parent process dies.
@@ -19,7 +22,7 @@ import TextInputMonitorKit
 setvbuf(stdout, nil, _IOLBF, 0)
 signal(SIGPIPE, SIG_IGN)
 
-let monitor = TextInputMonitor()
+let monitor = TextInputMonitor(options: .fromArguments(Array(CommandLine.arguments.dropFirst())))
 monitor.onEvent = { event in
     if let line = event.wireLine { print(line) }
 }

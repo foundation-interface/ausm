@@ -194,7 +194,7 @@ describe('setupAUSMElectronBridge', () => {
         assert.equal(payload.imageData, undefined);
     });
 
-    test('screenshots on disk are moved into the cache and served via the custom scheme', async () => {
+    test('screenshots on disk are copied into the cache and served via the custom scheme', async () => {
         const rt = fakeRuntime();
         const win = new FakeWindow();
         setupAUSMElectronBridge(win as any, rt as any);
@@ -204,11 +204,12 @@ describe('setupAUSMElectronBridge', () => {
         const payload = win.webContents.sent[0][1] as any;
         assert.equal(payload.imageUrl, 'ausm-screenshot://screenshot/shot_1_a');
         assert.equal(payload.imageWidth, 10);
-        assert.equal(fs.existsSync(src), false, 'source removed after caching');
+        assert.equal(fs.existsSync(src), true, 'source left for other subscribers (runtime memory)');
         const cached = path.join(userDataDir, 'ausm-screenshots', 'shot_1_a.jpg');
         assert.ok(fs.existsSync(cached));
 
-        // A duplicate event for the same (now deleted) source reuses the cached copy.
+        // A duplicate event whose source is already gone reuses the cached copy.
+        fs.rmSync(src);
         rt.fire('onScreenshotEvent', { eventID: 'dup', imagePath: src, timestamp: 2 });
         assert.equal((win.webContents.sent[1][1] as any).imageUrl, 'ausm-screenshot://screenshot/shot_1_a');
 
@@ -218,6 +219,65 @@ describe('setupAUSMElectronBridge', () => {
         assert.equal(ok.headers.get('Content-Type'), 'image/jpeg');
         assert.equal(Buffer.from(await ok.arrayBuffer()).length, 4);
         fs.rmSync(path.dirname(src), { recursive: true, force: true });
+    });
+
+    test('the screenshot cache keeps the newest 50 files and drops ones older than 24 h', () => {
+        const dir = path.join(userDataDir, 'ausm-screenshots');
+        fs.mkdirSync(dir, { recursive: true });
+        for (const f of fs.readdirSync(dir)) fs.rmSync(path.join(dir, f));
+        const now = Date.now() / 1000;
+        for (let i = 0; i < 55; i++) {
+            const f = path.join(dir, `old${i}.jpg`);
+            fs.writeFileSync(f, 'x');
+            fs.utimesSync(f, now - 3600 + i, now - 3600 + i);
+        }
+        const stale = path.join(dir, 'stale.jpg');
+        fs.writeFileSync(stale, 'x');
+        fs.utimesSync(stale, now - 25 * 3600, now - 25 * 3600);
+
+        const rt = fakeRuntime();
+        setupAUSMElectronBridge(new FakeWindow() as any, rt as any);
+        const src = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'ausm-shot-')), 'shot.jpg');
+        fs.writeFileSync(src, 'x');
+        rt.fire('onScreenshotEvent', { eventID: 'newest', imagePath: src, timestamp: 1 });
+        const left = fs.readdirSync(dir);
+        assert.equal(left.length, 50);
+        assert.ok(left.includes('newest.jpg'));
+        assert.ok(!left.includes('stale.jpg'));
+        assert.ok(!left.includes('old0.jpg'), 'oldest beyond the cap are removed');
+        fs.rmSync(path.dirname(src), { recursive: true, force: true });
+    });
+
+    test('cleanup unsubscribes from the runtime and stops forwarding', () => {
+        const rt = fakeRuntime();
+        const win = new FakeWindow();
+        const bridge = setupAUSMElectronBridge(win as any, rt as any);
+        bridge.cleanup();
+        for (const [name, list] of rt.subs) assert.equal(list.length, 0, name);
+
+        // A runtime without unsubscribe handles: the forwarders still go quiet.
+        const legacy = fakeRuntime({ noUnsubscribe: true });
+        const win2 = new FakeWindow();
+        setupAUSMElectronBridge(win2 as any, legacy as any).cleanup();
+        legacy.fire('onTaskEvent', {});
+        legacy.fire('onScreenshotEvent', { imageData: { dataBase64: 'QQ==', width: 1, height: 1 } });
+        assert.equal(win2.webContents.sent.length, 0);
+    });
+
+    test('logging reports lengths, never selected or copied text', () => {
+        const logs: string[] = [];
+        const saved = console.log;
+        console.log = (...a: unknown[]) => { logs.push(a.join(' ')); };
+        try {
+            const rt = fakeRuntime();
+            setupAUSMElectronBridge(new FakeWindow() as any, rt as any, { debug: true });
+            rt.fire('onTextSelectionEvent', { selectedText: 'SECRET-SELECTION' });
+            rt.fire('onCopyPasteEvent', { action: 'COPY', contentType: 'text', content: 'SECRET-CLIP' });
+        } finally {
+            console.log = saved;
+        }
+        assert.ok(logs.some((l) => l.includes('<16 chars>')));
+        assert.ok(!logs.some((l) => l.includes('SECRET')));
     });
 
     test('a missing screenshot file yields no image URL', () => {

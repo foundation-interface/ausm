@@ -78,8 +78,8 @@ export const TOOL_SCHEMAS = [
     {
         name: "personal_search",
         description:
-            "Search Rima's captured personal materials (OCR'd screen content — Slack, browser tabs, docs, editors, etc.). " +
-            "Use for anything about Rima's life, projects, conversations, recent activity, or facts grounded in her own files. " +
+            "Search the user's captured personal materials (OCR'd screen content — Slack, browser tabs, docs, editors, etc.). " +
+            "Use for anything about the user's life, projects, conversations, recent activity, or facts grounded in their own files. " +
             "SAFE TO CALL MULTIPLE TIMES IN PARALLEL with different queries — issue 2–4 query variants at once if you're not sure which phrasing will match. " +
             "Each hit includes a citation index [N] you can use directly in your final answer.",
         input_schema: {
@@ -108,7 +108,7 @@ export const TOOL_SCHEMAS = [
     {
         name: "personal_recent",
         description:
-            "List the materials Rima engaged with in a time range, most-recent first. " +
+            "List the materials the user engaged with in a time range, most-recent first. " +
             "Use for 'what was I doing yesterday' / 'this week' / temporal queries. " +
             "Pass ISO datetimes like '2026-03-11 00:00:00'. Returns titles + ids, not full text.",
         input_schema: {
@@ -154,7 +154,7 @@ export const TOOL_SCHEMAS = [
         description:
             "Delegate a web research question to a focused subagent (Haiku). Use when a question is " +
             "web-heavy and needs multi-query exploration (e.g., 'find the official commencement date for " +
-            "Rima's specific program'). You provide the question and any personal grounding; the subagent " +
+            "the user's specific program'). You provide the question and any personal grounding; the subagent " +
             "fans out web queries in parallel, fetches the best pages, and returns a compressed digest with " +
             "citations. Slower than web_search (~3–5s) but better quality for non-trivial questions.",
         input_schema: {

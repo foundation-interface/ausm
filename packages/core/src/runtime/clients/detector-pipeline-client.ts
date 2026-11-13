@@ -9,12 +9,14 @@
 
 import { EventEmitter } from 'events';
 
-import {
+// Type-only: '@ausm/detector-pipeline' is required lazily in the constructor, so a missing
+// optional package doesn't break loading the other clients.
+import type {
     DetectorPipelineService,
-    type DetectorPipelineConfig,
-    type DetectorTriggerResult as ServiceResult,
-    type DetectorSpec,
-    type PromptTrace,
+    DetectorPipelineConfig,
+    DetectorTriggerResult as ServiceResult,
+    DetectorSpec,
+    PromptTrace,
 } from '@ausm/detector-pipeline';
 
 export interface DetectorPipelineClientOptions {
@@ -101,7 +103,9 @@ export class DetectorPipelineClient extends EventEmitter {
             maxConcurrentEvals: options.maxConcurrentEvals ?? 16,
         };
 
-        this.service = new DetectorPipelineService(config);
+        // eslint-disable-next-line @typescript-eslint/no-require-imports
+        const { DetectorPipelineService: Service } = require('@ausm/detector-pipeline') as typeof import('@ausm/detector-pipeline');
+        this.service = new Service(config);
 
         this.service.on('detector-triggered', (result: ServiceResult) => {
             if (!this.running) return;

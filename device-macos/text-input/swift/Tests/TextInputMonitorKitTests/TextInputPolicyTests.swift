@@ -24,6 +24,32 @@ final class TextInputPolicyTests: XCTestCase {
     }
 }
 
+final class TextTruncationTests: XCTestCase {
+    func testTruncateCapsAtCharacterBoundary() {
+        XCTAssertEqual(TextInputPolicy.truncate("abc", maxLength: 3).truncated, false)
+        XCTAssertEqual(TextInputPolicy.truncate("abc", maxLength: 3).text, "abc")
+        let cut = TextInputPolicy.truncate("ab👩‍👩‍👧c", maxLength: 3)
+        XCTAssertEqual(cut.text, "ab👩‍👩‍👧")
+        XCTAssertTrue(cut.truncated)
+        XCTAssertEqual(TextInputPolicy.truncate("abc", maxLength: 0).text, "abc", "0 disables the cap")
+        XCTAssertNil(TextInputPolicy.truncate(nil, maxLength: 1).text)
+    }
+
+    func testOptionsDefaultAndArguments() {
+        XCTAssertEqual(TextInputMonitor.Options().maxTextLength, 100_000)
+        XCTAssertEqual(TextInputMonitor.Options.fromArguments(["--max-text-length", "42"]).maxTextLength, 42)
+        XCTAssertEqual(TextInputMonitor.Options.fromArguments(["--max-text-length", "-1"]).maxTextLength, 100_000)
+    }
+
+    func testTextTruncatedOnWireOnlyWhenSet() throws {
+        let plain = TextInputEvent(status: .updated, text: "a", sourceElement: nil, caretScreenPosition: nil, timestamp: 1)
+        XCTAssertFalse(try XCTUnwrap(TextInputMonitorEvent.textInput(plain).wireLine).contains("textTruncated"))
+        let cut = TextInputEvent(status: .updated, text: "a", sourceElement: nil, caretScreenPosition: nil,
+                                 timestamp: 1, textTruncated: true)
+        XCTAssertTrue(try XCTUnwrap(TextInputMonitorEvent.textInput(cut).wireLine).contains("\"textTruncated\":true"))
+    }
+}
+
 final class WireFormatTests: XCTestCase {
     private func json(_ value: some Encodable) throws -> [String: Any] {
         let data = try JSONEncoder().encode(value)

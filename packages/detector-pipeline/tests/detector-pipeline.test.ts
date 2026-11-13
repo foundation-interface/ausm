@@ -116,6 +116,15 @@ describe('lifecycle', () => {
         }
     });
 
+    test('a keyless OpenAI-compatible endpoint starts only with a non-Cerebras base URL', () => {
+        const local = new DetectorPipelineService({ provider: 'cerebras', apiBaseUrl: 'http://localhost:11434/v1' });
+        assert.equal(local.start(), true);
+        local.cleanup();
+        const hosted = new DetectorPipelineService({ provider: 'cerebras', apiBaseUrl: 'https://api.cerebras.ai/v1/' });
+        hosted.on('error', () => {});
+        assert.equal(hosted.start(), false);
+    });
+
     test('start failure without an error listener does not throw', () => {
         const svc = new DetectorPipelineService({ projectId: '  ' });
         assert.equal(svc.start(), false);
@@ -922,6 +931,25 @@ describe('frames', () => {
     });
 });
 
+describe('vertex evaluation timeout', () => {
+    test('a hung Vertex call errors after 60s and frees the slot', async () => {
+        const { svc, client, errors } = makeService({ provider: 'vertex', projectId: 'p' });
+        client.auto = null;
+        svc.addDetector(spec({ debounceMs: 100 }));
+        svc.pushEvent('e', {});
+        advance(100);
+        await until(() => client.calls.length === 1);
+        advance(59_999);
+        await flush();
+        assert.equal(errors.length, 0);
+        advance(1);
+        await until(() => errors.length === 1);
+        assert.match(errors[0].message, /Vertex evaluation timed out/);
+        assert.equal((svc as any).evalInFlight, 0);
+        svc.cleanup();
+    });
+});
+
 // ── End-to-end with the real Cerebras client and a fake fetch ───────────────
 
 describe('end to end (fake fetch)', () => {
@@ -946,6 +974,28 @@ describe('end to end (fake fetch)', () => {
             assert.equal(traces.length, 1);
             assert.equal(bodies[0].model, 'gemma-4-31b');
             assert.equal(results[0].summary, 'ok');
+            svc.cleanup();
+        } finally {
+            globalThis.fetch = realFetch;
+        }
+    });
+    test('a keyless local endpoint sends no Authorization header', async () => {
+        mock.timers.reset();
+        const realFetch = globalThis.fetch;
+        const headers: Array<Record<string, string>> = [];
+        globalThis.fetch = (async (_url: unknown, init?: RequestInit) => {
+            headers.push(init?.headers as Record<string, string>);
+            return new Response(JSON.stringify({ choices: [{ message: { content: '{"triggered":[{"name":"det","confidence":0.7,"summary":"ok","evidence":"e"}]}' } }] }));
+        }) as typeof fetch;
+        try {
+            const svc = new DetectorPipelineService({ provider: 'cerebras', apiBaseUrl: 'http://localhost:11434/v1' });
+            const results: DetectorTriggerResult[] = [];
+            svc.on('detector-triggered', (r) => results.push(r));
+            assert.equal(svc.start(), true);
+            svc.addDetector(spec());
+            svc.pushEvent('e', {});
+            await until(() => results.length === 1);
+            assert.equal(headers[0].Authorization, undefined);
             svc.cleanup();
         } finally {
             globalThis.fetch = realFetch;

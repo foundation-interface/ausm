@@ -10,10 +10,9 @@ import { EventEmitter } from 'events';
 import { TextInputStatus, type TextInputEventData } from '../../events/TextInputEvent';
 import { createAUSMUIElement } from '../../AUSM';
 
-import {
-    TextInputMonitorService,
-    type TextInputEventLike,
-} from '@ausm/device-macos-text-input';
+// Type-only: the darwin-only helper is required lazily in the constructor, so loading
+// '@ausm/core/clients' doesn't fail on platforms/installs without it.
+import type { TextInputMonitorService, TextInputEventLike } from '@ausm/device-macos-text-input';
 
 /**
  * Generate a unique event ID
@@ -76,7 +75,9 @@ export class TextInputClient extends EventEmitter {
     constructor(options: TextInputClientOptions = {}) {
         super();
         this.debug = options.debug ?? false;
-        this.monitor = new TextInputMonitorService();
+        // eslint-disable-next-line @typescript-eslint/no-require-imports
+        const { TextInputMonitorService: Monitor } = require('@ausm/device-macos-text-input') as typeof import('@ausm/device-macos-text-input');
+        this.monitor = new Monitor();
 
         this.monitor.on('text-input', (data: TextInputEventLike) => {
             if (!this.running) return;

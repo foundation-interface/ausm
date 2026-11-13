@@ -605,6 +605,15 @@ final class CaptureManager {
     }
 
     private func handleDisplayAdded(_ displayId: String, retryCount: Int = 0) {
+        // Same guard as handleDisplayChange: retries and the reconfigure re-add arrive via asyncAfter
+        // and must not start a second stream for this display while another transition is pumping.
+        if transitionDepth > 0 {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
+                guard let self, self.capturing else { return }
+                self.handleDisplayAdded(displayId, retryCount: retryCount)
+            }
+            return
+        }
         guard streams[displayId] == nil else { return }
 
         let retry = { [weak self] in
@@ -708,7 +717,7 @@ final class CaptureManager {
         var videoWriter: VideoWriter?
         if recordingEnabled && !outputDirectory.isEmpty {
             let writer = VideoWriter()
-            let outputPath = (outputDirectory as NSString).appendingPathComponent(displayId + ".mp4")
+            let outputPath = VideoWriter.segmentPath(directory: outputDirectory, displayId: displayId)
             if writer.initialize(outputPath: outputPath, width: UInt32(width), height: UInt32(height),
                                  fps: displayFps, codec: .h264, bitrate: 8_000_000) {
                 videoWriter = writer

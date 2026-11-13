@@ -45,10 +45,10 @@
   "devDependencies": {
     "typescript": "^5.3.0"
   },
-  "author": "Timeless",
+  "author": "Aware",
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/timeless/ausm.git"
+    "url": "https://github.com/foundation-interface/ausm.git"
   }
 }

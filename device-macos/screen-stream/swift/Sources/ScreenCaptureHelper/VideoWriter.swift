@@ -24,6 +24,23 @@ final class VideoWriter {
 
     deinit { finalize() }
 
+    /// Unique per-segment output path: `<directory>/<displayId>-<yyyyMMdd-HHmmss-SSS>.mp4`,
+    /// with a `-N` counter suffix if that name is already taken.
+    static func segmentPath(directory: String, displayId: String, date: Date = Date(),
+                            fileExists: (String) -> Bool = { FileManager.default.fileExists(atPath: $0) }) -> String {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.dateFormat = "yyyyMMdd-HHmmss-SSS"
+        let base = "\(displayId)-\(formatter.string(from: date))"
+        var path = (directory as NSString).appendingPathComponent(base + ".mp4")
+        var counter = 1
+        while fileExists(path) {
+            path = (directory as NSString).appendingPathComponent("\(base)-\(counter).mp4")
+            counter += 1
+        }
+        return path
+    }
+
     var isActive: Bool {
         lock.lock(); defer { lock.unlock() }
         return active
@@ -44,9 +61,9 @@ final class VideoWriter {
 
         self.outputPath = outputPath
 
-        // Replace any previous recording at this path.
+        // Never delete an existing file here: callers pass a fresh path from
+        // segmentPath(...) so a re-added display can't clobber a finished segment.
         let url = URL(fileURLWithPath: outputPath)
-        try? FileManager.default.removeItem(at: url)
 
         let writer: AVAssetWriter
         do {

@@ -40,8 +40,21 @@ public final class TextInputMonitor: @unchecked Sendable {
         public var axMessagingTimeout: Float? = 0.5
         /// How often Accessibility is re-checked (seconds).
         public var permissionCheckInterval: TimeInterval = 2
+        /// Cap on `TextInputEvent.text` in characters; longer values are cut and flagged with
+        /// `textTruncated`. 0 or less disables the cap. Default 100 000.
+        public var maxTextLength = 100_000
 
         public init() {}
+
+        /// Parse `--max-text-length N` (TextInputHelper's command line).
+        public static func fromArguments(_ args: [String]) -> Options {
+            var o = Options()
+            if let i = args.firstIndex(of: "--max-text-length"), i + 1 < args.count,
+               let n = Int(args[i + 1]), n > 0 {
+                o.maxTextLength = n
+            }
+            return o
+        }
     }
 
     /// Problems reported through `onError`, each once until it clears.
@@ -419,9 +432,10 @@ public final class TextInputMonitor: @unchecked Sendable {
             ? NSRunningApplication(processIdentifier: pid) : nil
         let appName = app?.localizedName
 
+        let (cappedText, truncated) = TextInputPolicy.truncate(text, maxLength: options.maxTextLength)
         return TextInputEvent(
             status: status,
-            text: text,
+            text: cappedText,
             sourceElement: TextInputEvent.SourceElement(
                 type: getStringAttribute(element, kAXRoleAttribute),
                 application: appName,
@@ -431,7 +445,8 @@ public final class TextInputMonitor: @unchecked Sendable {
                 content: nil
             ),
             caretScreenPosition: getCaretPosition(element).map { TextInputEvent.PointJSON($0) },
-            timestamp: Date().timeIntervalSince1970 * 1000
+            timestamp: Date().timeIntervalSince1970 * 1000,
+            textTruncated: truncated ? true : nil
         )
     }
 

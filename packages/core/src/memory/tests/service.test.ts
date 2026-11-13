@@ -278,7 +278,9 @@ test('client: requests fail fast when the service is not running or dies', async
     const t1 = Date.now();
     await assert.rejects(pending, /exited/);
     assert.ok(Date.now() - t1 < 1500, 'pending request waited for its timeout');
+    const t2 = Date.now();
     await c.stop();
+    assert.ok(Date.now() - t2 < 500, 'stop() on an already-exited child returns at once');
     await assert.rejects(c.getAllMaterials(), /not running/);
 });
 

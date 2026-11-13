@@ -4,7 +4,7 @@ import fs from 'fs';
 import os from 'os';
 import path from 'path';
 
-import { DetectorManager, parseDetectorFrontmatter, loadDetectorsFromDir } from '../src/detectors/DetectorManager';
+import { DetectorManager, parseDetectorFrontmatter, loadDetectorsFromDir, stripYamlComments } from '../src/detectors/DetectorManager';
 
 const fm = (lines: string[], body = 'Body text.') => `---\n${lines.join('\n')}\n---\n${body}`;
 const BASE = ['name: alpha', 'description: Alpha detector', 'event: alpha-event'];
@@ -263,5 +263,35 @@ describe('DetectorManager', () => {
         const m = new DetectorManager();
         assert.deepEqual(m.getAllDetectors(), []);
         assert.deepEqual(m.getActiveDetectors(), []);
+    });
+});
+
+describe('YAML comments in frontmatter', () => {
+    test('trailing and whole-line comments are ignored, as in the docs example', () => {
+        const parsed = parseDetectorFrontmatter(fm([
+            '# a stuck detector',
+            'name: stuck-on-error        # required',
+            'description: Notices repeated errors',
+            'event: stuck                # `task` is reserved for the TaskTracker',
+            'cooldown: 30000             # ms between firings',
+            'interval: 30000',
+            'trigger: interval           # interval | screen',
+            'sources: [screen, events]   # what the model sees',
+            'events: [window-state, copy-paste]  # filter',
+            'isolated: false             # true = its own model call',
+        ]));
+        assert.ok(parsed);
+        assert.deepEqual(parsed.frontmatter, {
+            name: 'stuck-on-error', description: 'Notices repeated errors', event: 'stuck',
+            cooldown: 30000, interval: 30000, trigger: 'interval',
+            sources: ['screen', 'events'], events: ['window-state', 'copy-paste'], isolated: false,
+        });
+    });
+
+    test('a # inside quotes or a word is kept', () => {
+        assert.equal(stripYamlComments('description: "fires on #1 # issues"  # c'), 'description: "fires on #1 # issues"');
+        assert.equal(stripYamlComments("description: 'it''s #2'"), "description: 'it''s #2'");
+        assert.equal(stripYamlComments('description: issue#42'), 'description: issue#42');
+        assert.equal(stripYamlComments("description: don't # c"), "description: don't");
     });
 });

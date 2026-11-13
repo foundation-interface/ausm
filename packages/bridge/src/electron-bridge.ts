@@ -14,8 +14,8 @@
  *
  * const runtime = createRuntime({ textSelection: { enableNativeSelection: true } });
  *
- * app.whenReady().then(() => {
- *   runtime.initialize();
+ * app.whenReady().then(async () => {
+ *   await runtime.initialize();
  *   const mainWindow = new BrowserWindow({
  *     webPreferences: { preload: getAUSMPreloadPath(), contextIsolation: true },
  *   });
@@ -80,12 +80,10 @@ export interface ElectronBridgeOptions {
     debug?: boolean;
     /** Per-module logging config — same shape as runtime LoggingConfig */
     logging?: BridgeLoggingConfig;
-    /** Custom IPC channel prefix (default: 'ausm:') */
-    channelPrefix?: string;
 }
 
 export interface ElectronBridge {
-    /** Clean up event listeners */
+    /** Stop forwarding events and unsubscribe from the runtime */
     cleanup: () => void;
     /** Get the window being bridged */
     window: BrowserWindow;
@@ -135,6 +133,31 @@ export const AUSM_SCREENSHOT_SCHEME_PRIVILEGES = {
 
 function screenshotCacheDir(): string {
     return path.join(app.getPath('userData'), 'ausm-screenshots');
+}
+
+const SCREENSHOT_CACHE_MAX_FILES = 50;
+const SCREENSHOT_CACHE_MAX_AGE_MS = 24 * 60 * 60 * 1000;
+
+/** Keep the screenshot cache bounded: newest 50 files, none older than 24 h. */
+function pruneScreenshotCache(dir: string): void {
+    let entries: Array<{ file: string; mtimeMs: number }>;
+    try {
+        entries = fs.readdirSync(dir)
+            .filter((name) => name.endsWith('.jpg'))
+            .map((name) => {
+                const file = path.join(dir, name);
+                return { file, mtimeMs: fs.statSync(file).mtimeMs };
+            });
+    } catch {
+        return;
+    }
+    entries.sort((a, b) => b.mtimeMs - a.mtimeMs);
+    const cutoff = Date.now() - SCREENSHOT_CACHE_MAX_AGE_MS;
+    entries.forEach(({ file, mtimeMs }, i) => {
+        if (i >= SCREENSHOT_CACHE_MAX_FILES || mtimeMs < cutoff) {
+            try { fs.unlinkSync(file); } catch { /* already gone */ }
+        }
+    });
 }
 
 /**
@@ -200,7 +223,7 @@ export function setupAUSMElectronBridge(
     runtime: AUSMRuntime,
     options: ElectronBridgeOptions = {}
 ): ElectronBridge {
-    const { debug = false, logging, channelPrefix = 'ausm:' } = options;
+    const { debug = false, logging } = options;
 
     // Resolve whether a module should log:
     //   per-module toggle > logging.global_default > legacy debug flag > false
@@ -217,8 +240,17 @@ export function setupAUSMElectronBridge(
             ? (...args: unknown[]) => console.log('[AUSM Bridge]', ...args)
             : () => {};
 
+    // Forwarders go quiet after cleanup() or once the window is gone, even on a
+    // runtime whose subscriptions can't be removed.
+    let active = true;
+    const live = () => active && !window.isDestroyed();
+    const unsubscribers: Array<() => void> = [];
+    const track = (result: unknown) => {
+        if (typeof result === 'function') unsubscribers.push(result as () => void);
+    };
+
     const send = (channel: string, data: unknown) => {
-        if (!window.isDestroyed()) {
+        if (live()) {
             window.webContents.send(channel, data);
         }
     };
@@ -226,10 +258,11 @@ export function setupAUSMElectronBridge(
     // Events are plain objects (interfaces + factories), so they serialize
     // directly over IPC via structured clone — no manual property picking needed.
 
-    runtime.onTextSelectionEvent((event: TextSelectionEvent) => {
-        makeLogger('textSelection')('Text Selection:', event.selectedText?.slice(0, 50));
+    track(runtime.onTextSelectionEvent((event: TextSelectionEvent) => {
+        if (!live()) return;
+        makeLogger('textSelection')('Text Selection:', `<${event.selectedText?.length ?? 0} chars>`);
         send(AUSM_IPC_CHANNELS.TEXT_SELECTION, event);
-    });
+    }));
 
     // Screenshot events: cache JPEGs to disk and serve via ausm-screenshot://
     // so multi-MB base64 never goes over IPC.
@@ -241,7 +274,8 @@ export function setupAUSMElectronBridge(
         }
     };
 
-    runtime.onScreenshotEvent((event: ScreenshotEvent) => {
+    track(runtime.onScreenshotEvent((event: ScreenshotEvent) => {
+        if (!live()) return;
         const hasImage = event.imageData != null || event.imagePath != null;
         makeLogger('screenshot')('Screenshot:', event.type, hasImage ? '(with image)' : '', event.imagePath ? `path=${event.imagePath}` : '');
         let imageUrl: string | null = null;
@@ -274,7 +308,9 @@ export function setupAUSMElectronBridge(
                     for (const [p, v] of Array.from(SCREENSHOT_PATH_CACHE.entries())) {
                         if (now - v.ts > SCREENSHOT_CACHE_REUSE_MS) SCREENSHOT_PATH_CACHE.delete(p);
                     }
-                    try { fs.unlinkSync(event.imagePath); } catch { /* copy is in cache */ }
+                    // The source stays put: other subscribers (e.g. runtime memory) may still read it;
+                    // the screenshot helper sweeps its own stale temp files.
+                    pruneScreenshotCache(cacheDir);
                 } catch (err) {
                     console.warn('[AUSM Bridge] Failed to cache screenshot:', (err as Error).message, 'source=', event.imagePath);
                 }
@@ -291,60 +327,68 @@ export function setupAUSMElectronBridge(
             imageHeight,
             imageData: imageUrl ? undefined : event.imageData,
         });
-    });
+    }));
 
     if (typeof runtime.onCopyPasteEvent === 'function') {
-        runtime.onCopyPasteEvent((event: CopyPasteEvent) => {
-            makeLogger('clipboardMonitor')('Copy/Paste:', event.action, event.contentType, event.content?.slice(0, 30));
+        track(runtime.onCopyPasteEvent((event: CopyPasteEvent) => {
+            if (!live()) return;
+            makeLogger('clipboardMonitor')('Copy/Paste:', event.action, event.contentType, `<${event.content?.length ?? 0} chars>`);
             send(AUSM_IPC_CHANNELS.COPY_PASTE, event);
-        });
+        }));
     }
 
-    runtime.onApplicationSwitchEvent((event: WindowStateEvent) => {
+    track(runtime.onApplicationSwitchEvent((event: WindowStateEvent) => {
+        if (!live()) return;
         makeLogger('windowState')('Window State:', event.application, event.state);
         send(AUSM_IPC_CHANNELS.WINDOW_STATE, event);
-    });
+    }));
 
-    runtime.subscribeToTextInputEvent((event: TextInputEvent) => {
+    track(runtime.subscribeToTextInputEvent((event: TextInputEvent) => {
+        if (!live()) return;
         makeLogger('textInput')('Text Input:', event.status);
         send(AUSM_IPC_CHANNELS.TEXT_INPUT, event);
-    });
+    }));
 
     if (typeof runtime.onCursorPlusPlusEvent === 'function') {
-        runtime.onCursorPlusPlusEvent((event: CursorPlusPlusEvent) => {
+        track(runtime.onCursorPlusPlusEvent((event: CursorPlusPlusEvent) => {
+            if (!live()) return;
             makeLogger('cursorPlusPlus')('Cursor++:', event.action, `(${event.x},${event.y})`);
             send(AUSM_IPC_CHANNELS.CURSOR_PLUS_PLUS, event);
-        });
+        }));
     }
 
     if (typeof runtime.onMaterialEvent === 'function') {
-        runtime.onMaterialEvent((event: MaterialEvent) => {
+        track(runtime.onMaterialEvent((event: MaterialEvent) => {
+            if (!live()) return;
             makeLogger('materialManager')('Material Event:', event.materialEventType, event.materialId ?? event.title ?? '');
             // FRAME_CAPTURED includes a full JPEG; keep the IPC payload small.
             const { frameDataBase64: _omit, ...lean } = event;
             send(AUSM_IPC_CHANNELS.MATERIAL_EVENT, lean);
-        });
+        }));
     }
 
     if (typeof runtime.onSpaceChangeEvent === 'function') {
-        runtime.onSpaceChangeEvent((event: SpaceChangeEvent) => {
+        track(runtime.onSpaceChangeEvent((event: SpaceChangeEvent) => {
+            if (!live()) return;
             makeLogger('windowState')('Space changed');
             send(AUSM_IPC_CHANNELS.SPACE_CHANGE, event);
-        });
+        }));
     }
 
     if (typeof runtime.onTaskEvent === 'function') {
-        runtime.onTaskEvent((event: TaskEvent) => {
+        track(runtime.onTaskEvent((event: TaskEvent) => {
+            if (!live()) return;
             makeLogger('detectorPipeline')('Task:', event.status, event.taskLabel ?? '');
             send(AUSM_IPC_CHANNELS.TASK, event);
-        });
+        }));
     }
 
     if (typeof runtime.onDetectorEvent === 'function') {
-        runtime.onDetectorEvent((event: DetectorEvent) => {
+        track(runtime.onDetectorEvent((event: DetectorEvent) => {
+            if (!live()) return;
             makeLogger('detectorPipeline')('Detector:', event.detectorName, event.eventType);
             send(AUSM_IPC_CHANNELS.DETECTOR, event);
-        });
+        }));
     }
 
 
@@ -354,8 +398,8 @@ export function setupAUSMElectronBridge(
 
     return {
         cleanup: () => {
-            // Note: AUSM runtime doesn't currently support removing callbacks
-            // This is a placeholder for future implementation
+            active = false;
+            for (const unsubscribe of unsubscribers.splice(0)) unsubscribe();
         },
         window
     };

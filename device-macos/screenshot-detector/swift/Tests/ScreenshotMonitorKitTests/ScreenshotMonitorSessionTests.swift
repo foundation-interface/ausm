@@ -469,6 +469,33 @@ final class ScreenshotMonitorSessionTests: XCTestCase {
         XCTAssertEqual(last("screencapture_started")?["origin"] as? String, "hotkey")
     }
 
+    func testHotkeyOnlySuppressesUIEventsOfFilteredInvocations() {
+        start { $0.hotkeyOnly = true }
+        sys.argv[130] = ["-i", "/tmp/shot.png"]      // another app's interactive CLI capture
+        sys.setProcesses(screencapture: [130], ui: [131])
+        poll()
+        sys.setProcesses()
+        poll()
+        XCTAssertEqual(types(), ["ready"], "no ui events without an accepted session")
+
+        sys.argv[132] = ["-pdiU", "-z", "keyboard.interactive"]
+        sys.setProcesses(screencapture: [132], ui: [133])
+        poll()
+        sys.setProcesses(ui: [133])
+        poll()
+        sys.setProcesses()
+        poll()
+        XCTAssertEqual(types(), ["ready", "screencapture_started", "screencaptureui_started", "screencaptureui_ended"])
+    }
+
+    func testScreencaptureStartedPrecedesUIStartedInOnePoll() {
+        start()
+        sys.argv[134] = ["-pdiU", "-z", "keyboard.interactive"]
+        sys.setProcesses(screencapture: [134], ui: [135])
+        poll()
+        XCTAssertEqual(types(), ["ready", "screencapture_started", "screencaptureui_started"])
+    }
+
     func testCLIInvocationDoesNotSupersedeHotkeySessionWhenHotkeyOnly() {
         start { $0.hotkeyOnly = true }
         begin(pid: 125, ["-pdin", "-z", "keyboard.selection"])

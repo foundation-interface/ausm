@@ -138,6 +138,14 @@ test('screencaptureui_started opens a session only when none is open', () => {
     assert.equal(alone.events[1].imagePath, null);
 });
 
+test('hotkeyOnly never synthesizes a session from screencaptureui events', () => {
+    const { events } = feed(
+        [{ type: 'screencaptureui_started' }, { type: 'screencaptureui_ended' }],
+        new ScreenshotDetectorService({ hotkeyOnly: true }),
+    );
+    assert.equal(events.length, 0);
+});
+
 test('duplicate / out-of-order UI events do not produce extra sessions', () => {
     const { events } = feed([
         { type: 'screencaptureui_ended' }, // no session open: ignored

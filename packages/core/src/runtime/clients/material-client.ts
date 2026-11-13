@@ -285,6 +285,9 @@ export class MaterialClient extends EventEmitter {
             }
         });
 
+        // EPIPE when the child dies mid-write must not crash the host; 'exit' handles the failure.
+        this.process.stdin?.on('error', (err) => this.debug(`stdin error: ${err.message}`));
+
         // Monitor stdout (JSON-line events from service)
         this.process.stdout?.setEncoding('utf-8');
         this.process.stdout?.on('data', (chunk: string) => {
@@ -307,6 +310,13 @@ export class MaterialClient extends EventEmitter {
         // Wait for the "ready" message
         await new Promise<void>((resolve, reject) => {
             const timeout = setTimeout(() => {
+                this.removeListener('ready', onReady);
+                this.removeListener('error', onError);
+                this.removeListener('exit', onExit);
+                // Don't leave a half-started child running.
+                const proc = this.process;
+                this.process = null;
+                proc?.kill('SIGKILL');
                 reject(new Error('Material manager service timed out waiting for ready signal (10s)'));
             }, 10000);
 

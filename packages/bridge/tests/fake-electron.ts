@@ -72,12 +72,17 @@ export class FakeWindow {
 }
 
 /** Runtime double exposing the subscription/emit/query surface the bridge uses. */
-export function fakeRuntime(opts: { omit?: string[] } = {}) {
+export function fakeRuntime(opts: { omit?: string[]; noUnsubscribe?: boolean } = {}) {
     const subs = new Map<string, Array<(e: any) => void>>();
     const emitted: Array<[string, unknown]> = [];
     const sub = (name: string) => (cb: (e: any) => void) => {
         if (!subs.has(name)) subs.set(name, []);
         subs.get(name)!.push(cb);
+        if (opts.noUnsubscribe) return undefined;
+        return () => {
+            const list = subs.get(name)!;
+            if (list.includes(cb)) list.splice(list.indexOf(cb), 1);
+        };
     };
     const rt: Record<string, any> = {
         fire: (name: string, event: unknown) => (subs.get(name) ?? []).forEach((cb) => cb(event)),

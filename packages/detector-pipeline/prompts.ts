@@ -18,9 +18,11 @@ Respond ONLY with compact JSON (no markdown, no extra keys):
 
 {"triggered":[{"name":"<detector>","confidence":<0-1>,"summary":"<short>","evidence":"<short>"}]}
 
+(add "task_description":"<one sentence>" to an item when its detector asks for it)
+
 If none triggered: {"triggered":[]}
 
-Keep strings short. summary ≤ 16 words. evidence ≤ 8 words. Omit suggested_detectors unless non-empty. Do not emit action, task_label, or task_description.
+Keep strings short. summary ≤ 16 words. evidence ≤ 8 words. Omit suggested_detectors unless non-empty. Do not emit action or task_label. Emit task_description (≤ 25 words) only when a detector's output format asks for it.
 
 Guidelines:
 - Trigger only when evidence clearly matches the rules. Classifiers that say they MUST fire always fire.

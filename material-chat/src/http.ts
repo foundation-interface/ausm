@@ -4,6 +4,7 @@ import { cors } from "hono/cors";
 import { streamSSE } from "hono/streaming";
 import { z } from "zod";
 import { config } from "./config.js";
+import { isAllowedOrigin, localOnly } from "./local-only.js";
 import { ask, askStream } from "./engine/pipeline.js";
 import { listPipelines } from "./engine/pipelines/index.js";
 import type { MemoryStore } from "./memory/store.js";
@@ -27,7 +28,12 @@ function stripSourcesFooter(md: string): string {
 
 export function createApp(memory: MemoryStore): Hono {
   const app = new Hono();
-  app.use("*", cors({ origin: "*", allowHeaders: ["Content-Type"] }));
+  app.use("*", localOnly(config.allowedOrigins));
+  // Echo the origin only for local or allow-listed pages (localOnly has already rejected others).
+  app.use("*", cors({
+    origin: (origin) => (isAllowedOrigin(origin, config.allowedOrigins) ? origin : null),
+    allowHeaders: ["Content-Type"],
+  }));
   mountMemoryRoutes(app, memory, config.dbPath);
 
   const store = getSessionStore(config.sessionsPath);

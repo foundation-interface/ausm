@@ -316,11 +316,17 @@ describe('observationFromDetectorResult', () => {
         assert.equal(observationFromDetectorResult({ ...base, summary: '{"label":5}' }).label, '');
     });
 
-    test('explicit task fields win over the summary', () => {
+    test('explicit label and action win over the summary; task_description becomes the detail', () => {
         const o = observationFromDetectorResult({
             ...base, summary: '{"label":"J","description":"JD","action":"begin"}', taskLabel: 'T', taskDescription: 'TD', taskAction: 'end',
         });
-        assert.deepEqual([o.label, o.description, o.action], ['T', 'TD', 'end']);
+        assert.deepEqual([o.label, o.description, o.detail, o.action], ['T', 'JD', 'TD', 'end']);
+    });
+
+    test('task_description never replaces the summary subject', () => {
+        const o = observationFromDetectorResult({ ...base, summary: 'Writing TypeScript: TaskTracker.ts', taskDescription: ' Fixing the matcher ' });
+        assert.equal(o.description, 'TaskTracker.ts');
+        assert.equal(o.detail, 'Fixing the matcher');
     });
 
     test('blank task fields do not override the summary', () => {
@@ -350,5 +356,44 @@ describe('observationFromDetectorResult', () => {
             requestTimestamp: 1, responseTimestamp: 2, modelLatencyMs: 1,
         });
         assert.deepEqual([full.application, full.detectorName, full.rawModelResponse, full.requestTimestamp, full.responseTimestamp, full.modelLatencyMs], ['App', 'rapid-task', 'r', 1, 2, 1]);
+    });
+});
+
+describe('TaskTracker — step detail', () => {
+    test('a new step sentence on the same subject updates the task instead of splitting it', () => {
+        const [a] = tracker.apply(obs('Writing TypeScript', 'TaskTracker.ts', {
+            detail: 'Fixing a deadlock in fetchShareableDisplays by replacing the main-queue hop with a semaphore',
+        }));
+        const ev = tracker.apply(obs('Writing TypeScript', 'TaskTracker.ts', {
+            detail: 'Adding unit tests for screen-stream segment naming',
+        }));
+        assert.deepEqual(statuses(ev), [TaskStatus.UPDATED]);
+        assert.equal(ev[0].taskId, a.taskId);
+        assert.equal(a.taskDescription, 'Fixing a deadlock in fetchShareableDisplays by replacing the main-queue hop with a semaphore');
+        assert.equal(ev[0].taskDescription, 'Adding unit tests for screen-stream segment naming');
+    });
+
+    test('a different subject still switches, whatever the detail says', () => {
+        const [a] = tracker.apply(obs('Watching YouTube', 'Rust ownership talk', { detail: 'Watching the borrow checker section' }));
+        const ev = tracker.apply(obs('Reading email', 'Alice Q3 roadmap', { detail: 'Watching the borrow checker section' }));
+        assert.deepEqual(statuses(ev), [TaskStatus.COMPLETED, TaskStatus.DETECTED]);
+        assert.equal(ev[0].taskId, a.taskId);
+        assert.notEqual(ev[1].taskId, a.taskId);
+    });
+
+    test('a check without a sentence keeps the last one', () => {
+        tracker.apply(obs('Writing TypeScript', 'TaskTracker.ts', { detail: 'Fixing the matcher' }));
+        const [e] = tracker.apply(obs('Writing TypeScript', 'TaskTracker.ts'));
+        assert.equal(e.taskDescription, 'Fixing the matcher');
+    });
+
+    test('without any detail the event carries the subject, as before', () => {
+        const [e] = tracker.apply(obs('Writing TypeScript', 'TaskTracker.ts'));
+        assert.equal(e.taskDescription, 'TaskTracker.ts');
+    });
+
+    test('the model context names the current step', () => {
+        tracker.apply(obs('Writing TypeScript', 'TaskTracker.ts', { detail: 'Fixing the matcher' }));
+        assert.match(tracker.formatContext(), /TaskTracker\.ts \(now: Fixing the matcher\)/);
     });
 });
