@@ -12,7 +12,7 @@ flowchart TD
         
         sel["text-selection"]
         inp["text-input"]
-        car["camera-stream"]
+        car["camera"]
         vp["viewport-manager"]
         scr["screen-stream"]
         shot["screenshot-detector"]
@@ -20,7 +20,7 @@ flowchart TD
         cur["cursor-plus-plus"]
     end
 
-    vp --> wse["WindowStateEvent"]
+    vp --> wse["WindowStateEvent<br/>SpaceChangeEvent"]
     sel --> tse["TextSelectionEvent"]
     inp --> tie["TextInputEvent"]
     shot --> sce["ScreenshotEvent"]
@@ -41,11 +41,12 @@ flowchart TD
     wse --> mm["material-manager"]
     scr --> mm
     mm --> me["MaterialEvent"]
-    me --> memory
+    mm --> memory
     me --> rt
     memory --> rt
 
     wse & tse & tie & sce & cpe & cue & me --> pipeline["activity detection pipeline"]
+    mm -- "focused frame" --> pipeline
     pipeline --> de["DetectorEvent"]
     de --> rt
     de -- "event: task" --> tt["TaskTracker"] --> te["TaskEvent"]
@@ -204,7 +205,7 @@ erDiagram
 - **focus sessions** add up how long you looked at each material. `getMaterialWeights(days)` ranks materials by that time, with older time decaying on a 7-day half-life
 - **ocr** (`memory: { ocrEnabled: true }`) reads the text in a material's frames with apple vision when you leave it, merges new lines into one document and emits `MATERIAL_CONTENT_UPDATED`. read it with `getMaterialContent(id)`
 - **embeddings** of that text are computed on your mac (the model downloads from hugging face once) and power semantic search
-- **persons** tables exist for detectors that notice people; there is no runtime api for them yet
+- **tasks** and **persons** tables are in the schema, but the runtime doesn't write to them yet: `TaskEvent`s reach your callbacks only, so store them yourself if you need a history
 
 `freezeMemory()` pauses all writes. the file sits in a folder only you can read, and deleting it forgets everything.
 
