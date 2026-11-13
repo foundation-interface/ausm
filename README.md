@@ -8,17 +8,52 @@ most software only knows what happens inside itself, so an assistant has to wait
 
 ```mermaid
 flowchart TD
-    subgraph mac["on your mac"]
-        sensors["sensors<br/>native helpers"] --> events["typed events<br/>selection · typing · copy/paste<br/>windows · screenshots · cursor"]
-        stream["screen-stream"] --> mm["material-manager<br/>one id per tab / file / thread"]
-        events --> mm
-        mm --> memory[("memory<br/>one sqlite file")]
+    subgraph sensors["Sensors (device-macos)"]
+        
+        sel["text-selection"]
+        inp["text-input"]
+        car["camera-stream"]
+        vp["viewport-manager"]
+        scr["screen-stream"]
+        shot["screenshot-detector"]
+        clip["clipboard-monitor"]
+        cur["cursor-plus-plus"]
     end
-    events --> pipeline["detector pipeline<br/>your DETECTOR.md rules"]
-    mm -- "focused window frame" --> pipeline
-    pipeline <--> model["vision model<br/>cloud or local"]
-    pipeline --> det["DetectorEvent"] --> tracker["TaskTracker"] --> task["TaskEvent"]
-    events & mm & det & task --> app["your app"]
+
+    vp --> wse["WindowStateEvent"]
+    sel --> tse["TextSelectionEvent"]
+    inp --> tie["TextInputEvent"]
+    shot --> sce["ScreenshotEvent"]
+    clip --> cpe["CopyPasteEvent"]
+    cur --> cue["CursorPlusPlusEvent"]
+
+    wse --> rt["AUSM Runtime"]
+    tse --> rt
+    tie --> rt
+    car --> rt
+    scr --> rt
+    sce --> rt
+    cpe --> rt
+    cue --> rt
+
+
+
+    wse --> mm["material-manager"]
+    scr --> mm
+    mm --> me["MaterialEvent"]
+    me --> memory
+    me --> rt
+    memory --> rt
+
+    wse & tse & tie & sce & cpe & cue & me --> pipeline["activity detection pipeline"]
+    pipeline --> de["DetectorEvent"]
+    de --> rt
+    de -- "event: task" --> tt["TaskTracker"] --> te["TaskEvent"]
+    te --> rt
+
+
+
+    rt --> host["Your application"]
 ```
 
 three layers, each optional on top of the one before: **sensors** report what happens, **materials** remember what you looked at, and **tasks** name what you're doing.
@@ -274,11 +309,27 @@ swift test                                # the swift kits
 
 ## credits
 
-ausm went through many versions before this one, and most of their history lives in repos that are still private:
+ausm went through many versions before this one, and most of their history lives in repos that are still private.
 
-- it started as **PlatformActionHook**, [ozzie kirkby](https://github.com/ozziek)'s macos action hooks in the foundation-interface org
-- it grew into the first **ausm** (now archived), which [haijun xia](https://github.com/haijunxia) contributed much of
-- [zhicheng huang](https://github.com/huangworld) worked on the screenshot pipeline and its testing
-- [rima cao](https://github.com/Rrrima) rebuilt and maintains this version
+<table>
+  <tr>
+    <td align="center" valign="top" width="25%">
+      <a href="https://github.com/ozziek"><img src="https://github.com/ozziek.png?size=160" width="80" height="80" alt="ozzie kirkby"><br><b>ozzie kirkby</b></a><br>
+      <sub>started it as PlatformActionHook, macos action hooks in the foundation-interface org</sub>
+    </td>
+    <td align="center" valign="top" width="25%">
+      <a href="https://github.com/haijunxia"><img src="https://github.com/haijunxia.png?size=160" width="80" height="80" alt="haijun xia"><br><b>haijun xia</b></a><br>
+      <sub>contributed much of the first ausm (now archived)</sub>
+    </td>
+    <td align="center" valign="top" width="25%">
+      <a href="https://github.com/huangworld"><img src="https://github.com/huangworld.png?size=160" width="80" height="80" alt="zhicheng huang"><br><b>zhicheng huang</b></a><br>
+      <sub>screenshot pipeline and testing</sub>
+    </td>
+    <td align="center" valign="top" width="25%">
+      <a href="https://github.com/Rrrima"><img src="https://github.com/Rrrima.png?size=160" width="80" height="80" alt="rima cao"><br><b>rima cao</b></a><br>
+      <sub>rebuilt and maintains this version</sub>
+    </td>
+  </tr>
+</table>
 
-built at the foundation interface lab, uc san diego. [fairy cursor](https://github.com/Rrrima/fairy-cursor) runs on it.
+built at the foundation interface lab, uc san diego.

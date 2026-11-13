@@ -197,6 +197,23 @@ public enum ScreenCapture {
         return nil
     }
 
+    /// Whether `point` lies on a window of the Screenshot agent that is smaller than its display
+    /// (the Cmd+Shift+5 toolbar, its Options menu); the full-screen selection overlay doesn't count.
+    static func isScreenshotChrome(at point: CGPoint) -> Bool {
+        guard let infoList = CGWindowListCopyWindowInfo([.optionOnScreenOnly], kCGNullWindowID) as? [[String: Any]] else {
+            return false
+        }
+        let screen = CGDisplayBounds(display(containing: point))
+        return infoList.contains { info in
+            let owner = info[kCGWindowOwnerName as String] as? String ?? ""
+            guard owner == "Screenshot" || owner == "screencaptureui",
+                  let boundsDict = info[kCGWindowBounds as String] as? [String: Any],
+                  let bounds = CGRect(dictionaryRepresentation: boundsDict as CFDictionary),
+                  bounds.contains(point) else { return false }
+            return bounds.width < screen.width * 0.9 || bounds.height < screen.height * 0.9
+        }
+    }
+
     // MARK: - Legacy fallbacks
 
     private static func legacyCaptureDisplay(_ displayID: CGDirectDisplayID, cropTo rect: CGRect?) -> CGImage? {
