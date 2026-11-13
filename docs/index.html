@@ -1316,9 +1316,9 @@ the user what to grant; do not retry in a loop.
       c: [["embedding", "float[384]"], ["material_id", "via map"]] },
     { id: "screenshots", col: 2, s: "your ⌘⇧4 captures", w: "One row per finished screenshot, with the selected region.",
       c: [["screenshot_id", "PK"], ["timestamp"], ["data"], ["mime_type"], ["bounds_x · y · w · h"], ["screenshot_type"]] },
-    { id: "tasks", col: 2, s: "current state per task", w: "Upserted from TaskEvents. One row per task id.",
+    { id: "tasks", col: 2, s: "current state per task", w: "In the schema, but the runtime doesn't write it yet. TaskEvents go to your onTaskEvent callbacks only.",
       c: [["task_id", "PK"], ["label"], ["description"], ["application"], ["confidence"], ["status"], ["level"], ["first_seen"], ["last_seen"]] },
-    { id: "task_events", col: 2, p: "tasks", s: "every transition", w: "Append-only history: each DETECTED, UPDATED and COMPLETED, with model latency.",
+    { id: "task_events", col: 2, p: "tasks", s: "every transition", w: "In the schema for a per-transition history, but not written by the runtime yet. Store TaskEvents yourself if you need one.",
       c: [["id", "PK"], ["task_id", "FK"], ["status"], ["label"], ["confidence"], ["timestamp"], ["request_ts"], ["response_ts"]] }
   ];
   var erdSel = "materials";
