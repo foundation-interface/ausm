@@ -312,21 +312,11 @@ swift test                                # the swift kits
 
 ausm went through many versions before this one, and most of their history lives in repos that are still private.
 
-<table>
-  <tr>
-    <td align="center" width="25%">
-      <a href="https://github.com/haijunxia"><img src="docs/credits/haijunxia.png" width="80" height="80" alt="haijun xia"><br><sub><b>haijun xia</b></sub></a>
-    </td>
-    <td align="center" width="25%">
-      <a href="https://github.com/Rrrima"><img src="docs/credits/rrrima.png" width="80" height="80" alt="rima cao"><br><sub><b>rima cao</b></sub></a>
-    </td>
-    <td align="center" width="25%">
-      <a href="https://github.com/ozziek"><img src="docs/credits/ozziek.png" width="80" height="80" alt="ozzie kirkby"><br><sub><b>ozzie kirkby</b></sub></a>
-    </td>
-    <td align="center" width="25%">
-      <a href="https://github.com/huangworld"><img src="docs/credits/huangworld.png" width="80" height="80" alt="zhicheng huang"><br><sub><b>zhicheng huang</b></sub></a>
-    </td>
-  </tr>
-</table>
+<p>
+<a href="https://github.com/haijunxia"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/credits/haijunxia-dark.png"><img src="docs/credits/haijunxia.png" width="120" alt="haijun xia"></picture></a>
+<a href="https://github.com/Rrrima"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/credits/rrrima-dark.png"><img src="docs/credits/rrrima.png" width="120" alt="rima cao"></picture></a>
+<a href="https://github.com/ozziek"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/credits/ozziek-dark.png"><img src="docs/credits/ozziek.png" width="120" alt="ozzie kirkby"></picture></a>
+<a href="https://github.com/huangworld"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/credits/huangworld-dark.png"><img src="docs/credits/huangworld.png" width="120" alt="zhicheng huang"></picture></a>
+</p>
 
 built at the foundation interface lab, uc san diego.
