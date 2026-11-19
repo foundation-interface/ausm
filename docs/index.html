@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="description" content="AUSM turns macOS activity into typed events, tracks the materials you work with, and detects tasks.">
+<meta name="description" content="AUSM gives apps and agents your context on macOS: sensors, materials and detectors.">
 <!-- The agent skill shown on this page is embedded from skills/ausm/SKILL.md.
      After editing that file, run: node scripts/sync-docs-skill.mjs -->
 <title>AUSM</title>
@@ -12,7 +12,8 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
-/* Layout: centered hero (headline, one install line, link row), the live demo as the visual, an animated four-step diagram, quick start, agents. */
+/* Layout: centered hero (headline, one install line, link row), the live demo as the visual, quick start, agents.
+   Docs follow the pipeline: sensors → materials → detectors. Memory and chat sit under materials, tasks and models under detectors. */
 :root {
   --bg: #fbfbfc; --fg: #1d1d1f; --fg2: #6e6e73; --fg3: #a1a1a6;
   --fill: rgba(0,0,0,.045); --fill2: rgba(0,0,0,.075); --fill-lite: rgba(0,0,0,.022); --hl: rgba(0,0,0,.08);
@@ -60,7 +61,7 @@ header.top { position: sticky; top: env(safe-area-inset-top, 0px); z-index: 20; 
 .hero { text-align: center; padding-block: 88px 44px; }
 .eyebrow { margin: 0 0 14px; font-size: 14px; font-weight: 500; color: var(--fg3); letter-spacing: .02em; }
 h1 { margin: 0 auto; font-size: clamp(30px, 4.6vw, 48px); line-height: 1.08; letter-spacing: -.035em; font-weight: 700; text-wrap: balance; }
-.sub { margin: 18px auto 0; max-width: 34ch; font-size: clamp(18px, 2.1vw, 21px); color: var(--fg2); text-wrap: balance; }
+.sub { margin: 18px auto 0; max-width: 46ch; font-size: clamp(18px, 2.1vw, 21px); color: var(--fg2); text-wrap: balance; }
 .install { margin: 32px auto 0; display: inline-flex; flex-direction: column; align-items: stretch; gap: 8px; max-width: 100%; }
 .seg { display: inline-flex; align-self: center; padding: 3px; gap: 2px; border-radius: 999px; background: var(--fill); }
 .seg button { all: unset; cursor: pointer; font-size: 13px; font-weight: 500; padding: 4px 14px; border-radius: 999px; color: var(--fg2); }
@@ -71,6 +72,8 @@ h1 { margin: 0 auto; font-size: clamp(30px, 4.6vw, 48px); line-height: 1.08; let
 .cmd code.noprompt::before { content: ""; }
 .copy { all: unset; cursor: pointer; flex-shrink: 0; font-family: var(--font); font-size: 13px; color: var(--fg2); padding: 3px 10px; border-radius: 8px; }
 .copy:hover { background: var(--fill2); color: var(--fg); }
+/* The button belongs to the box, not the command: it stays at the right edge however short the line is. */
+.cmd .copy { margin-left: auto; }
 .install-note { margin: 2px 0 0; font-size: 13.5px; color: var(--fg3); text-align: center; max-width: 46ch; align-self: center; text-wrap: balance; }
 .links { margin-top: 22px; display: flex; justify-content: center; flex-wrap: wrap; gap: 6px 22px; font-size: 15px; color: var(--fg2); }
 .links a:hover, .links button:hover { color: var(--fg); }
@@ -205,6 +208,19 @@ pre.code .s { color: var(--fg2); }
 .prompts { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
 .prompts li { padding: 14px 18px; border-radius: 14px; background: var(--fill); font-size: 15.5px; line-height: 1.45; }
 .small { font-size: 14px; color: var(--fg2); margin: 12px 0 0; }
+.small code { color: var(--fg); }
+.prompts li b { font-weight: 600; }
+.agents pre.code { margin-bottom: 0; }
+/* What each layer asks for, in the order you'd turn them on. */
+.need { margin-top: 28px; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+@media (max-width: 860px) { .need { grid-template-columns: minmax(0, 1fr); } }
+.need > div { padding: 14px 16px; border-radius: 14px; background: var(--fill); min-width: 0; }
+.need a { font-size: 15px; font-weight: 600; }
+.need a::after { content: " ›"; color: var(--fg3); }
+.need p { margin: 4px 0 0; font-size: 14.5px; line-height: 1.45; color: var(--fg2); }
+.need p code { color: var(--fg); }
+.need pre { margin: 8px 0 0; font-family: var(--mono); font-size: 12px; line-height: 1.55; color: var(--fg); white-space: pre-wrap; overflow-wrap: anywhere; }
+.block .lead code { color: var(--fg); }
 .small button { all: unset; cursor: pointer; color: var(--fg); }
 
 /* skill view */
@@ -233,20 +249,33 @@ footer a:hover { color: var(--fg); }
 .dnav a:hover { color: var(--fg); }
 .dnav a[aria-current="page"] { background: var(--fill); color: var(--fg); }
 .dnav a i { font-style: normal; font-family: var(--mono); font-size: 11px; color: var(--fg3); }
+/* Children sit under their concept, aligned to its label: memory and chat are ways into materials, tasks and models belong to detectors. */
+.dnav a.kid { padding: 4px 12px 4px 35px; font-size: 14px; color: var(--fg3); }
+.dnav a.kid:hover, .dnav a.kid[aria-current="page"] { color: var(--fg); }
 @media (max-width: 820px) {
   .docs { grid-template-columns: minmax(0, 1fr); gap: 8px; padding-top: 12px; }
   .dnav { top: 56px; z-index: 6; flex-direction: row; overflow-x: auto; margin: 0 -20px; padding: 8px 20px; background: color-mix(in srgb, var(--bg) 88%, transparent); backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); }
   .dnav a i { display: none; }
+  .dnav a.kid { padding: 7px 12px; }
 }
 .dpage { min-width: 0; max-width: 820px; }
 .dpage[hidden] { display: none; }
-.dpage .eyebrow { text-align: left; }
+.dpage .eyebrow { text-align: left; margin-bottom: 8px; }
+.dpage .eyebrow a { transition: color .2s; }
+.dpage .eyebrow a:hover { color: var(--fg); }
+.dpage .eyebrow a::after { content: " ›"; }
 .dpage h1 { margin: 0; text-align: left; font-size: clamp(32px, 4.4vw, 44px); }
 .dpage .sub { margin: 12px 0 0; max-width: 44ch; text-align: left; text-wrap: pretty; }
 .dpage h3 { margin: 56px 0 4px; font-size: 21px; letter-spacing: -.015em; font-weight: 600; }
 .dpage h3 + .hint { margin: 0 0 16px; font-size: 15px; color: var(--fg2); }
 .fig { margin-top: 28px; padding: 20px; border-radius: 20px; background: var(--fill-lite); }
 .dpage h3 + .hint + .fig { margin-top: 0; }
+.dpage h3 + .fig, .dpage h3 + pre.code, .dpage h3 + .prov { margin-top: 14px; }
+.fig + pre.code { margin-top: 12px; }
+/* all: unset on the buttons below drops the page focus ring, so put it back. */
+.sx-b:focus-visible, .pn:focus-visible, .tb:focus-visible, .chip:focus-visible, .mx-card:focus-visible, .mx-k:focus-visible { outline: 2px solid var(--fg); outline-offset: 2px; }
+/* One selection language for every figure: flat at rest, a lifted white card when it's the one you're reading. A short rise marks the step; no rings. */
+@keyframes rise { 0%, 100% { transform: none; } 40% { transform: translateY(-2px); } }
 .fig-cap { margin: 14px 2px 0; font-size: 13px; color: var(--fg3); }
 .facts { margin-top: 12px; display: grid; grid-template-columns: repeat(auto-fill, minmax(176px, 1fr)); gap: 8px; }
 .fact { padding: 10px 14px; border-radius: 12px; background: var(--fill); }
@@ -298,6 +327,41 @@ footer a:hover { color: var(--fg); }
 .sx-json.swap { animation: swapin .35s cubic-bezier(.22,1,.36,1); }
 @keyframes swapin { from { opacity: .2; transform: translateY(3px); } to { opacity: 1; transform: none; } }
 
+/* materials: what each one collects. The card is the material, open; every MaterialEvent drops in as a cube. */
+.mx { position: relative; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
+@media (max-width: 760px) { .mx { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.mx-card { all: unset; cursor: pointer; box-sizing: border-box; display: flex; flex-direction: column; min-width: 0; padding: 10px; border-radius: 14px; background: var(--fill); transition: background 1.2s cubic-bezier(.22,1,.36,1), box-shadow 1.2s cubic-bezier(.22,1,.36,1); }
+.mx-card:hover { background: var(--fill2); transition-duration: .2s; }
+.mx-card.on, .mx-card.on:hover { background: var(--win); box-shadow: 0 1px 2px rgba(0,0,0,.05), 0 6px 18px rgba(0,0,0,.07); transition-duration: .3s; }
+/* The window is bright only while it's the one in front. */
+.mx-win { display: block; padding: 7px 8px 9px; border-radius: 8px; background: var(--fill); opacity: .5; transition: opacity .6s cubic-bezier(.22,1,.36,1); }
+.mx-card.on .mx-win { opacity: 1; }
+.mx-win .dots { margin: 0; gap: 3px; }
+.mx-win .dots i { width: 5px; height: 5px; background: var(--fill2); }
+.mx-card.on .mx-win .dots i { background: var(--fg3); }
+.mx-win-b { margin-top: 7px; display: flex; flex-direction: column; gap: 4px; }
+.mx-win-b i { display: block; height: 4px; border-radius: 2px; background: var(--fill2); }
+.mx-t { display: block; margin-top: 9px; font-size: 13px; line-height: 1.3; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mx-m { display: block; margin-top: 1px; font-size: 11px; color: var(--fg3); font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* wrap-reverse fills the bottom row first, so the cubes pile up instead of reading down. */
+.mx-pile { margin-top: 10px; height: 69px; display: flex; flex-wrap: wrap-reverse; align-content: flex-start; gap: 3px; }
+/* Kinds differ by tone, not hue: the page has no category colours. */
+.cube { display: block; flex-shrink: 0; width: 9px; height: 9px; border-radius: 2.5px; background: var(--fg3); transition: opacity .25s ease, transform .18s cubic-bezier(.34,1.56,.64,1); }
+.cube[data-k="created"] { background: var(--fg); }
+.cube[data-k="focused"] { background: var(--fg2); }
+.cube[data-k="frame"] { background: var(--fg3); }
+.cube[data-k="unfocused"] { background: var(--fill2); }
+.cube[data-k="content"] { background: radial-gradient(circle, var(--fg) 0 1.5px, var(--fill2) 2.1px); }
+.mx-pile .cube:hover { transform: scale(1.4); }
+.cube.drop { animation: drop .55s cubic-bezier(.34,1.56,.64,1) both; }
+@keyframes drop { from { opacity: 0; transform: translateY(-16px) scale(.6); } to { opacity: 1; transform: none; } }
+.mx[data-f] .mx-pile .cube { opacity: .16; }
+.mx[data-f="created"] .cube[data-k="created"], .mx[data-f="focused"] .cube[data-k="focused"], .mx[data-f="frame"] .cube[data-k="frame"], .mx[data-f="unfocused"] .cube[data-k="unfocused"], .mx[data-f="content"] .cube[data-k="content"] { opacity: 1; }
+.mx-key { margin-top: 14px; display: flex; flex-wrap: wrap; gap: 6px; }
+.mx-k { all: unset; cursor: default; box-sizing: border-box; display: inline-flex; align-items: center; gap: 7px; font-size: 12.5px; padding: 3px 10px; border-radius: 8px; background: var(--fill); color: var(--fg2); transition: background .2s, color .2s; }
+.mx-k:hover, .mx-k:focus-visible { background: var(--win); color: var(--fg); }
+.mx-k b { font-weight: 500; color: var(--fg); font-variant-numeric: tabular-nums; }
+
 /* materials: identity */
 .idm { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr); gap: 20px; align-items: center; }
 @media (max-width: 700px) { .idm { grid-template-columns: minmax(0, 1fr); } }
@@ -344,16 +408,18 @@ footer a:hover { color: var(--fg); }
 .erd { position: relative; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr); gap: 14px 44px; align-items: start; }
 @media (max-width: 720px) { .erd { grid-template-columns: minmax(0, 1fr); gap: 8px; } .erd svg { display: none; } }
 .erd svg { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; overflow: visible; }
-.erd svg path { fill: none; stroke: var(--fill2); stroke-width: 2; transition: stroke .3s; }
+.erd svg path { fill: none; stroke: var(--fill2); stroke-width: 2; stroke-linecap: round; stroke-dasharray: 1; transition: stroke .3s; }
 .erd svg path.on { stroke: var(--fg3); }
 .ecol { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
-.tb { all: unset; cursor: pointer; box-sizing: border-box; position: relative; z-index: 1; display: block; width: 100%; padding: 10px 12px; border-radius: 12px; background: var(--win); box-shadow: 0 1px 2px rgba(0,0,0,.05); transition: opacity .3s, box-shadow .3s; }
-.tb:hover { box-shadow: 0 1px 2px rgba(0,0,0,.05), 0 6px 16px rgba(0,0,0,.07); }
+.tb { all: unset; cursor: pointer; box-sizing: border-box; position: relative; z-index: 1; display: block; width: 100%; padding: 10px 12px; border-radius: 12px; background: var(--fill); transition: opacity .3s, background .9s cubic-bezier(.22,1,.36,1), box-shadow .9s cubic-bezier(.22,1,.36,1); }
+.tb:hover { background: var(--fill2); transition-duration: .2s; }
 .tb b { display: block; font-family: var(--mono); font-size: 12.5px; font-weight: 500; }
 .tb small { display: block; font-size: 12px; color: var(--fg3); margin-top: 1px; }
-.erd.focus .tb { opacity: .45; }
+.erd.focus .tb { opacity: .55; }
 .erd.focus .tb.on, .erd.focus .tb.rel { opacity: 1; }
-.tb.on { box-shadow: 0 0 0 2px var(--fg), 0 6px 16px rgba(0,0,0,.07); }
+.tb.rel, .tb.rel:hover { background: var(--win); box-shadow: 0 1px 2px rgba(0,0,0,.04); }
+.tb.on, .tb.on:hover { background: var(--win); box-shadow: 0 1px 2px rgba(0,0,0,.05), 0 6px 18px rgba(0,0,0,.07); transition-duration: .3s; }
+.tb.lit { animation: rise .9s cubic-bezier(.22,1,.36,1) both; animation-delay: var(--d, 0ms); }
 .ecap { font-size: 12px; font-weight: 500; color: var(--fg3); letter-spacing: .04em; text-transform: uppercase; margin: 2px 2px -2px; }
 .tdetail { margin-top: 16px; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr); gap: 18px; padding: 14px 16px; border-radius: 14px; background: var(--win); }
 @media (max-width: 720px) { .tdetail { grid-template-columns: minmax(0, 1fr); } }
@@ -392,37 +458,31 @@ footer a:hover { color: var(--fg); }
 .pipe { display: grid; grid-template-columns: minmax(0, 1fr) 14px minmax(0, 1fr) 14px minmax(0, 1fr) 14px minmax(0, 1fr); align-items: center; gap: 6px; }
 @media (max-width: 720px) { .pipe { grid-template-columns: minmax(0, 1fr); } .pipe .ar { transform: rotate(90deg); justify-self: center; } }
 .pstack { display: flex; flex-direction: column; gap: 8px; }
-.pn { all: unset; cursor: pointer; box-sizing: border-box; display: block; padding: 10px 12px; border-radius: 12px; background: var(--win); box-shadow: 0 1px 2px rgba(0,0,0,.05); font-size: 13.5px; line-height: 1.3; transition: box-shadow .25s; position: relative; overflow: hidden; }
+.pn { all: unset; cursor: pointer; box-sizing: border-box; display: block; padding: 10px 12px; border-radius: 12px; background: var(--fill); color: var(--fg2); font-size: 13.5px; line-height: 1.3; transition: background .9s cubic-bezier(.22,1,.36,1), box-shadow .9s cubic-bezier(.22,1,.36,1), color .3s; }
 .pn small { display: block; font-size: 11.5px; color: var(--fg3); margin-top: 2px; }
-.pn:hover { box-shadow: 0 1px 2px rgba(0,0,0,.05), 0 6px 16px rgba(0,0,0,.07); }
-.pn[aria-pressed="true"] { box-shadow: 0 0 0 2px var(--fg); }
-.pn.pulse::before { content: ""; position: absolute; inset: 0; background: linear-gradient(90deg, transparent, var(--hl), transparent); animation: sweep .9s ease-out; }
-@keyframes sweep { from { transform: translateX(-100%); } to { transform: translateX(100%); } }
-.ar { height: 2px; border-radius: 2px; background: var(--fill2); }
+.pn:hover { background: var(--fill2); color: var(--fg); transition-duration: .2s; }
+.pn[aria-pressed="true"], .pn[aria-pressed="true"]:hover { background: var(--win); color: var(--fg); box-shadow: 0 1px 2px rgba(0,0,0,.05), 0 6px 18px rgba(0,0,0,.07); transition-duration: .3s; }
+.pn.lit { animation: rise .9s cubic-bezier(.22,1,.36,1) both; }
+/* The wire into a step draws itself as the step lights, like the sensor flow. */
+.ar { height: 2px; border-radius: 2px; background: var(--fill2); transform-origin: left center; }
+.ar.lit { animation: wire .45s cubic-bezier(.22,1,.36,1) both; }
+@media (max-width: 720px) { .pipe .ar.lit { animation: none; } }
 .pdetail { margin-top: 14px; min-height: 3.2em; font-size: 14.5px; color: var(--fg2); max-width: 62ch; }
 .pdetail b { color: var(--fg); font-weight: 600; }
+.pdetail a { color: var(--fg); text-decoration: underline; text-decoration-color: var(--fg3); text-underline-offset: 3px; }
+.pdetail.swap { animation: swapin .35s cubic-bezier(.22,1,.36,1); }
 
-/* tasks: tracker */
-.tt { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 20px; }
-@media (max-width: 720px) { .tt { grid-template-columns: minmax(0, 1fr); } }
-.tt-say { display: flex; flex-direction: column; gap: 6px; }
-.tt-say .chip { border-radius: 12px; padding: 9px 12px; font-size: 13.5px; line-height: 1.3; }
-.tt-say .chip small { display: block; font-size: 11.5px; color: var(--fg3); margin-top: 1px; }
-.tt-say .chip.used { opacity: .45; }
-.tt-in { display: flex; gap: 6px; margin-top: 4px; }
-.tt-in input { flex: 1; min-width: 0; font: inherit; font-size: 13.5px; color: var(--fg); background: var(--fill); border: 0; border-radius: 10px; padding: 8px 11px; outline: none; }
-.tt-in input:focus { background: var(--fill2); }
-.tt-cur { padding: 12px 14px; border-radius: 14px; background: var(--win); box-shadow: 0 1px 2px rgba(0,0,0,.05); }
-.tt-cur b { display: block; font-size: 11.5px; font-weight: 500; color: var(--fg3); }
-.tt-cur span { display: block; font-size: 15px; font-weight: 500; margin-top: 2px; }
-.tt-cur code { display: block; font-size: 11.5px; color: var(--fg3); margin-top: 2px; }
-.tt-why { margin-top: 10px; font-size: 13px; color: var(--fg2); min-height: 2.8em; }
-.tt-why code { font-size: 12px; }
-.tt-log { list-style: none; margin: 10px 0 0; padding: 0; display: flex; flex-direction: column; gap: 6px; max-height: 236px; overflow-y: auto; }
-.tt-log .card { cursor: default; }
-.tt-top { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; margin-bottom: 8px; font-size: 12px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--fg2); }
-.tt-top button { all: unset; cursor: pointer; font-size: 12.5px; font-weight: 400; letter-spacing: 0; text-transform: none; color: var(--fg3); }
-.tt-top button:hover { color: var(--fg); }
+/* tasks: tracker. Model answers run left to right; the bar under them is the task each one landed in, so "one id" is something you can see. */
+.tk { overflow-x: auto; margin: -8px; padding: 8px; }
+.tk-row { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 8px; min-width: 620px; }
+.tk-h { margin: 0 2px 8px; font-size: 12px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--fg2); }
+.tk-row + .tk-h { margin-top: 18px; }
+.tk-row .pn small { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tk-span { min-width: 0; padding: 8px 12px; border-radius: 12px; background: var(--fill); color: var(--fg2); font-size: 13.5px; line-height: 1.3; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; transition: background .9s cubic-bezier(.22,1,.36,1), box-shadow .9s cubic-bezier(.22,1,.36,1), color .3s, opacity .4s; }
+.tk-span code { display: block; font-size: 11.5px; color: var(--fg3); }
+.tk-span.on { background: var(--win); color: var(--fg); box-shadow: 0 1px 2px rgba(0,0,0,.05), 0 6px 18px rgba(0,0,0,.07); transition-duration: .3s; }
+/* Tasks that haven't started at the selected call aren't there yet. */
+.tk-span.later, .tk-row .pn.later { opacity: .35; }
 
 /* tasks: detector file */
 .dmd { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr); gap: 18px; align-items: start; }
@@ -442,7 +502,6 @@ footer a:hover { color: var(--fg); }
 .req-stack { display: flex; flex-direction: column; gap: 6px; }
 .req-stack .pn { display: flex; justify-content: space-between; gap: 10px; align-items: baseline; }
 .req-stack .pn small { margin: 0; white-space: nowrap; }
-.req-stack .pn.resp { background: var(--fill); box-shadow: none; }
 .req-stack .sep { height: 10px; display: flex; justify-content: center; }
 .req-stack .sep::before { content: ""; width: 2px; border-radius: 2px; background: var(--fill2); }
 .req-x { padding: 14px 16px; border-radius: 14px; background: var(--win); min-width: 0; }
@@ -475,17 +534,17 @@ footer a:hover { color: var(--fg); }
   <div class="wrap">
     <section class="hero">
       <p class="eyebrow">MIT · macOS 13+</p>
-      <h1>Your activity, as typed events.</h1>
-      <p class="sub">Materials, memory and tasks from what you do on your Mac. For context-aware apps and agents.</p>
+      <h1>Subscribe to your context.</h1>
+      <p class="sub">Your activity, as typed events.</p>
       <div class="install">
         <div class="seg" role="tablist" aria-label="Install">
           <button type="button" role="tab" aria-selected="true" data-install="npm">Node</button>
           <button type="button" role="tab" aria-selected="false" data-install="swift">Swift</button>
         </div>
-        <div class="cmd"><code id="install-code">npm install ausm</code><button class="copy" type="button" data-copy="#install-code">Copy</button></div>
-        <p class="install-note" id="install-note">The full stack: sensors, materials, memory and tasks.</p>
+        <div class="cmd"><code id="install-code">npm install @ausm/ausm</code><button class="copy" type="button" data-copy="#install-code">Copy</button></div>
+        <p class="install-note" id="install-note">Node 18+. The native helpers ship prebuilt.</p>
       </div>
-      <div class="links"><a href="#start">Quick start</a><a href="#docs/sensors">How it works</a><button type="button" data-view="agent-skill">For agents</button><a href="https://github.com/foundation-interface/ausm" target="_blank" rel="noopener">GitHub</a></div>
+      <div class="links"><a href="#start">Quick start</a><a href="#docs/sensors">How it works</a><a href="#swift">Swift package</a><button type="button" data-view="agent-skill">For agents</button><a href="https://github.com/foundation-interface/ausm" target="_blank" rel="noopener">GitHub</a></div>
     </section>
 
     <section class="demo" aria-label="Live demo">
@@ -529,9 +588,9 @@ footer a:hover { color: var(--fg); }
         </div>
         <div class="stream">
           <div class="lanes">
-            <div class="lane"><div class="lane-h"><a href="#docs/sensors">Sensors</a><span>Each action, typed</span></div><ul class="lane-list" id="lane-sensors" aria-label="Sensor events"></ul></div>
+            <div class="lane"><div class="lane-h"><a href="#docs/sensors">Sensors</a><span>Select, copy, type</span></div><ul class="lane-list" id="lane-sensors" aria-label="Sensor events"></ul></div>
             <div class="lane"><div class="lane-h"><a href="#docs/materials">Materials</a><span>App › window › tab</span></div><div class="tree" id="mat-tree" aria-label="Materials grouped by app and window"></div></div>
-            <div class="lane"><div class="lane-h"><a href="#docs/tasks">Tasks</a><span>Named by a model</span></div><ul class="lane-list" id="lane-tasks" aria-label="Task events" aria-live="polite"></ul></div>
+            <div class="lane"><div class="lane-h"><a href="#docs/detectors">Detectors</a><span>Rule fired, task named</span></div><ul class="lane-list" id="lane-tasks" aria-label="Task events" aria-live="polite"></ul></div>
           </div>
         </div>
       </div>
@@ -540,32 +599,47 @@ footer a:hover { color: var(--fg); }
 
     <section class="block" id="start">
       <h2>Quick start</h2>
-      <p class="lead">Subscribe to what you need. Everything runs on the Mac.</p>
-      <div class="code-tabs">
-        <div class="seg" role="tablist" aria-label="Language">
-          <button type="button" role="tab" aria-selected="true" data-lang-tab="node">Node</button>
-          <button type="button" role="tab" aria-selected="false" data-lang-tab="swift">Swift</button>
-        </div>
-<pre class="code" data-tab="node">import { createRuntime } from 'ausm/runtime';
+      <p class="lead">Save as <code>app.mjs</code>, run <code>node app.mjs</code>, then copy something.</p>
+<pre class="code">import { createRuntime } from '@ausm/ausm/runtime';
 
-const ausm = createRuntime({ detectorPipeline: { provider: 'cerebras' } });
+const ausm = createRuntime();
 
 ausm.onCopyPasteEvent((e) => console.log(e.action, e.contentType));
-ausm.onTaskEvent((e) => console.log(e.taskLabel));
+ausm.onTextSelectionEvent((e) => console.log(e.selectedText));
 await ausm.initialize();</pre>
-        <div class="out" data-tab="node">COPY TEXT
-→ Reading paper: Understanding and Using Context</div>
-<pre class="code" data-tab="swift" hidden>import ScreenshotMonitorKit
+      <div class="out">COPY TEXT</div>
+
+      <div class="need">
+        <div><a href="#docs/sensors">Sensors</a><p>Accessibility for whatever runs it: your terminal in development, your app once packaged. Screenshots also need Screen Recording.</p></div>
+        <div><a href="#docs/materials">Materials</a><p>Screen Recording, <code>enableScreenStreaming</code> and <code>materialManager.enabled</code>, and Python 3.9+ with:</p><pre>pip install -r node_modules/@ausm/device-macos-material-manager/py/requirements.txt</pre></div>
+        <div><a href="#docs/detectors">Detectors</a><p>Materials on, and a vision model: <code>CEREBRAS_API_KEY</code>, a Vertex project, or a local OpenAI-compatible server. Without one they stay off.</p></div>
+      </div>
+      <p class="small">A missing permission or Python package is only logged, as <code>[AUSM] …</code> on stderr. Nothing throws, and no events arrive.</p>
+    </section>
+
+    <section class="block" id="swift">
+      <h2>Native Mac app?</h2>
+      <p class="lead">Five sensors also ship as a Swift package that compiles into your app. No Node.</p>
+      <div class="agents">
+        <div>
+          <div class="cmd"><code class="noprompt" id="swift-cmd">.package(url: "https://github.com/foundation-interface/ausm.git", from: "0.1.0")</code><button class="copy" type="button" data-copy="#swift-cmd">Copy</button></div>
+<pre class="code">import ScreenshotMonitorKit
 
 let shots = ScreenshotMonitor(options: .init())
 shots.onCapture = { capture in
   Task { @MainActor in show(capture.image) }
 }
 shots.start()</pre>
-        <div class="out" data-tab="swift" hidden>CGImage 2048×1330 @2x · mode: selection</div>
+          <p class="small">Products: <code>ScreenshotMonitorKit</code>, <code>CursorMonitorKit</code>, <code>ClipboardMonitorKit</code>, <code>WindowMonitorKit</code>, <code>TextInputMonitorKit</code>.</p>
+        </div>
+        <ul class="prompts">
+          <li><b>Sensors only.</b> Materials, memory and detectors live in the Node runtime.</li>
+          <li><b>The same code as npm.</b> The Node runtime runs these kits as helper processes. Here they link into your app.</li>
+          <li><b>One path per sensor.</b> A kit and its Node helper running together report every event twice.</li>
+          <li><b>Sign your app.</b> It holds the Accessibility and Screen Recording grants, and macOS drops them on every rebuild without a stable signing identity.</li>
+        </ul>
       </div>
     </section>
-
 
     <section class="block">
       <h2>Built for coding agents</h2>
@@ -606,14 +680,15 @@ shots.start()</pre>
     <nav class="dnav" aria-label="Concepts">
       <a href="#docs/sensors" data-doc="sensors"><i>01</i>Sensors</a>
       <a href="#docs/materials" data-doc="materials"><i>02</i>Materials</a>
-      <a href="#docs/memory" data-doc="memory"><i>03</i>Memory</a>
-      <a href="#docs/tasks" data-doc="tasks"><i>04</i>Tasks</a>
-      <a href="#docs/models" data-doc="models"><i>05</i>Models</a>
+      <a class="kid" href="#docs/materials/memory" data-doc="memory">Memory</a>
+      <a class="kid" href="#docs/materials/chat" data-doc="chat">Chat</a>
+      <a href="#docs/detectors" data-doc="detectors"><i>03</i>Detectors</a>
+      <a class="kid" href="#docs/detectors/tasks" data-doc="tasks">Tasks</a>
+      <a class="kid" href="#docs/detectors/models" data-doc="models">Models</a>
     </nav>
 
     <!-- 01 sensors -->
     <article class="dpage" data-page="sensors">
-      <p class="eyebrow">Concept 01</p>
       <h1>Sensors</h1>
       <p class="sub">Each sensor watches one macOS signal and turns it into a typed event.</p>
 
@@ -649,9 +724,22 @@ await ausm.initialize();</pre>
 
     <!-- 02 materials -->
     <article class="dpage" data-page="materials" hidden>
-      <p class="eyebrow">Concept 02</p>
       <h1>Materials</h1>
-      <p class="sub">A material is one thing you look at: a tab, a file, a thread.</p>
+      <p class="sub">A material is one thing you look at: a tab, a file, a thread. What happens while it's in front collects on it.</p>
+
+      <div class="fig">
+        <div class="mx" id="mx"></div>
+        <div class="mx-key" id="mx-key"></div>
+        <p class="fig-cap">Each cube is one <code>MaterialEvent</code>. Click a card to bring that material to the front.</p>
+      </div>
+<pre class="code">const ausm = createRuntime({
+  enableScreenStreaming: true,
+  materialManager: { enabled: true },
+});
+
+ausm.onMaterialEvent((e) =&gt; {
+  if (e.materialEventType === 'MATERIAL_FOCUSED') show(e.materialId, e.title);
+});</pre>
 
       <h3>One title in one app, one id</h3>
       <p class="hint">Switch tabs, or open the same tab in a second window.</p>
@@ -677,11 +765,11 @@ await ausm.initialize();</pre>
             <div class="idbtns"><button class="chip" type="button" id="id-dup" aria-pressed="false">Open in new window</button></div>
           </div>
         </div>
-        <p class="fig-cap">The window id changes. The material id doesn't. It's the real hash, computed here.</p>
+        <p class="fig-cap">The window id changes. The material id doesn't.</p>
       </div>
 
       <h3>Frames are kept only when the window changes</h3>
-      <p class="hint">Each capture is compared to the last kept frame by perceptual hash. Drag the threshold.</p>
+      <p class="hint">Each capture is compared to the last kept frame by perceptual hash.</p>
       <div class="fig">
         <div class="fr-top"><span>Hash distance threshold</span><input type="range" id="fr-th" min="1" max="20" value="8" aria-label="Hash distance threshold"><output id="fr-tho">8</output></div>
         <div class="bars" id="fr-bars"><div class="thr" id="fr-thr"><span>keep ≥</span></div></div>
@@ -707,14 +795,14 @@ extension ts</pre></div>
 material-manager/
   metadata-extractors.ts</pre></div>
       </div>
-      <div class="dnext"><a href="#docs/memory"><small>Next</small>Memory</a></div>
+      <div class="dnext"><a href="#docs/materials/memory"><small>Next</small>Memory</a></div>
     </article>
 
-    <!-- 03 memory -->
+    <!-- 02 materials › memory -->
     <article class="dpage" data-page="memory" hidden>
-      <p class="eyebrow">Concept 03</p>
+      <p class="eyebrow"><a href="#docs/materials">Materials</a></p>
       <h1>Memory</h1>
-      <p class="sub">Everything lands in one SQLite file on the Mac. Query it, freeze it, or delete it.</p>
+      <p class="sub">Where materials are kept: one SQLite file on the Mac.</p>
 
       <div class="fig">
         <div class="erd" id="erd">
@@ -724,7 +812,6 @@ material-manager/
           <div class="ecol"><div class="ecap">Captures &amp; tasks</div></div>
         </div>
         <div class="tdetail" id="erd-detail"></div>
-        <p class="fig-cap">Click a table.</p>
       </div>
       <div class="facts">
         <div class="fact"><b>Path</b><span><code>materialManager.dbPath</code></span></div>
@@ -738,22 +825,67 @@ material-manager/
       <div class="fig">
         <div class="dc-top"><span>Half-life</span><input type="range" id="dc-h" min="1" max="30" value="7" aria-label="Half-life in days"><output id="dc-ho">7 days</output></div>
         <div class="dc" id="dc"></div>
-        <p class="fig-cap">How much one hour of focus still counts, by age. Hover the curve.</p>
+        <p class="fig-cap">How much one hour of focus still counts, by age.</p>
       </div>
 
       <h3>Query</h3>
 <pre class="code">const [top] = await ausm.getMaterials(20);
 const frame = await ausm.getMaterialLatestFrame(top.materialId);
-const text  = await ausm.getMaterialContent(top.materialId);   <span class="c">// OCR, if enabled</span>
+const ocr   = await ausm.getMaterialContent(top.materialId);   <span class="c">// { text, lineCount, … } with OCR on</span>
 const rank  = await ausm.getMaterialWeights(7);</pre>
-      <div class="dnext"><a href="#docs/tasks"><small>Next</small>Tasks</a></div>
+      <div class="dnext"><a href="#docs/materials/chat"><small>Next</small>Chat</a></div>
     </article>
 
-    <!-- 04 tasks -->
-    <article class="dpage" data-page="tasks" hidden>
-      <p class="eyebrow">Concept 04</p>
-      <h1>Tasks</h1>
-      <p class="sub">Detectors are plain-language rules a model checks against the screen. One of them names your task.</p>
+    <!-- 02 materials › chat -->
+    <article class="dpage" data-page="chat" hidden>
+      <p class="eyebrow"><a href="#docs/materials">Materials</a></p>
+      <h1>Material Chat</h1>
+      <p class="sub">An optional local HTTP service over memory: search your materials, or ask Claude about them.</p>
+
+      <div class="fig">
+        <div class="sx">
+          <div class="sx-list" role="tablist" aria-label="Endpoints" id="cx-list"></div>
+          <div class="sx-main">
+            <div class="flow" id="cx-flow">
+              <div class="fnode"><b>Request</b><span id="cx-req"></span></div>
+              <div class="fnode"><b>Reads</b><span id="cx-reads"></span></div>
+              <div class="fnode"><b>Returns</b><span id="cx-ret"></span></div>
+              <div class="fnode"><b>Leaves the Mac</b><span id="cx-out"></span></div>
+            </div>
+            <div class="sx-meta" id="cx-meta"></div>
+            <pre class="sx-json" id="cx-json"></pre>
+          </div>
+        </div>
+        <p class="fig-cap">A filled dot means the call goes to Claude.</p>
+      </div>
+
+      <h3>Turn it on</h3>
+      <p class="hint">The runtime starts the service as a child process. Don't run the <code>material-chat</code> bin yourself.</p>
+<pre class="code">const ausm = createRuntime({
+  enableScreenStreaming: true,
+  materialManager: { enabled: true, dbPath: 'ausm.db' },   <span class="c">// a real file, not :memory:</span>
+  memory: { ocrEnabled: true },                            <span class="c">// search reads OCR text</span>
+  materialChat: { enabled: true },
+});
+await ausm.initialize();
+
+const base = ausm.getHttpUrl();                            <span class="c">// http://127.0.0.1:8788</span>
+const { hits } = await fetch(base + '/memory/search?q=context').then((r) =&gt; r.json());</pre>
+      <div class="facts">
+        <div class="fact"><b>Listens on</b><span><code>127.0.0.1:8788</code>, change with <code>http.port</code></span></div>
+        <div class="fact"><b>Ask and chat need</b><span><code>ANTHROPIC_API_KEY</code></span></div>
+        <div class="fact"><b>Answers</b><span>requests with no <code>Origin</code>, localhost and <code>file://</code> pages</span></div>
+        <div class="fact"><b>Other origins</b><span>list them in <code>allowedOrigins</code></span></div>
+        <div class="fact"><b>Search rank</b><span>text match + recency + frames kept</span></div>
+        <div class="fact"><b>Web tools</b><span>off without <code>BRAVE_API_KEY</code></span></div>
+      </div>
+      <div class="dnext"><a href="#docs/detectors"><small>Next</small>Detectors</a></div>
+    </article>
+
+    <!-- 03 detectors -->
+    <article class="dpage" data-page="detectors" hidden>
+      <h1>Detectors</h1>
+      <p class="sub">A detector is a plain-language rule. A model checks it against the focused window and your recent events.</p>
 
       <div class="fig">
         <div class="pipe" id="pipe">
@@ -774,44 +906,51 @@ const rank  = await ausm.getMaterialWeights(7);</pre>
         <p class="pdetail" id="pdetail"></p>
       </div>
 
-      <h3>How a task keeps its id</h3>
-      <p class="hint">The model only returns a label. The tracker decides if it's the same work.</p>
-      <div class="fig">
-        <div class="tt">
-          <div>
-            <div class="tt-top">Model says</div>
-            <div class="tt-say" id="tt-say"></div>
-            <form class="tt-in" id="tt-form"><input id="tt-input" placeholder="Or type a label…" aria-label="Task label" autocomplete="off"><button class="chip" type="submit">Send</button></form>
-          </div>
-          <div>
-            <div class="tt-top">Tracker<button type="button" id="tt-reset">Reset</button></div>
-            <div class="tt-cur" id="tt-cur"><b>Current task</b><span>None</span></div>
-            <p class="tt-why" id="tt-why"></p>
-            <ul class="tt-log" id="tt-log" aria-live="polite"></ul>
-          </div>
-        </div>
-        <p class="fig-cap">Same work = label words overlap ≥ 70% and description ≥ 60%. This runs the real rule.</p>
-      </div>
-
       <h3>Write a detector</h3>
-      <p class="hint">A folder with a <code>DETECTOR.md</code>. Hover a line.</p>
+      <p class="hint">A folder with a <code>DETECTOR.md</code>.</p>
       <div class="dmd">
 <pre id="dmd"><span class="d">---</span><span data-k="name">name: stuck-on-error</span><span data-k="description">description: Notices a repeated error</span><span data-k="event">event: stuck</span><span data-k="trigger">trigger: interval</span><span data-k="interval">interval: 30000</span><span data-k="cooldown">cooldown: 30000</span><span data-k="sources">sources: [screen, events]</span><span data-k="events">events: [copy-paste, text-input]</span><span data-k="isolated">isolated: false</span><span class="d">---</span><span data-k="body">Fire when the same error stays on screen</span><span data-k="body">and the user has copied or searched it.</span><span data-k="body">Summarise the error in under 12 words.</span></pre>
         <div class="dmd-x" id="dmd-x"></div>
       </div>
 <pre class="code" style="margin-top:14px">createRuntime({ detectors: { extraDirs: ['./detectors'] } });
 ausm.onDetectorEvent((e) =&gt; { if (e.eventType === 'stuck') offerHelp(e.summary); });</pre>
-      <div class="dnext"><a href="#docs/models"><small>Next</small>Models</a></div>
+      <div class="dnext"><a href="#docs/detectors/tasks"><small>Next</small>Tasks</a></div>
     </article>
 
-    <!-- 05 models -->
+    <!-- 03 detectors › tasks -->
+    <article class="dpage" data-page="tasks" hidden>
+      <p class="eyebrow"><a href="#docs/detectors">Detectors</a></p>
+      <h1>Tasks</h1>
+      <p class="sub"><code>rapid-task</code> is the detector that ships with AUSM. It names what you're doing, and TaskTracker keeps that name on one id.</p>
+
+      <div class="fig">
+        <div class="tk">
+          <div class="tk-h">Model says</div>
+          <div class="tk-row" id="tk-calls"></div>
+          <div class="tk-h">Your app sees</div>
+          <div class="tk-row" id="tk-spans"></div>
+        </div>
+        <p class="pdetail" id="tk-why"></p>
+        <p class="fig-cap">Same work = label words overlap ≥ 70% and description ≥ 60%, compared with the task before.</p>
+      </div>
+<pre class="code">ausm.onTaskEvent((e) =&gt; {
+  if (e.status === 'TASK_DETECTED') startTimer(e.taskId, e.taskLabel);
+});</pre>
+      <div class="facts">
+        <div class="fact"><b>Status</b><span>detected · updated · completed</span></div>
+        <div class="fact"><b>Runs</b><span>on new activity, in its own model call</span></div>
+        <div class="fact"><b>History</b><span>not stored, keep the events yourself</span></div>
+      </div>
+      <div class="dnext"><a href="#docs/detectors/models"><small>Next</small>Models</a></div>
+    </article>
+
+    <!-- 03 detectors › models -->
     <article class="dpage" data-page="models" hidden>
-      <p class="eyebrow">Concept 05</p>
+      <p class="eyebrow"><a href="#docs/detectors">Detectors</a></p>
       <h1>Models</h1>
-      <p class="sub">Sensors and memory never call a model. Detectors and tasks need one you configure.</p>
+      <p class="sub">Detectors need a vision model that returns JSON. Without one the pipeline stays off and everything else still works.</p>
 
       <h3>What one call sends</h3>
-      <p class="hint">Click a part.</p>
       <div class="fig">
         <div class="req">
           <div class="req-stack" id="req-stack">
@@ -821,7 +960,7 @@ ausm.onDetectorEvent((e) =&gt; { if (e.eventType === 'stuck') offerHelp(e.summar
             <button class="pn" type="button" data-r="events">Recent events<small>≤ 40</small></button>
             <button class="pn" type="button" data-r="image">Window frame<small>JPEG, downsized</small></button>
             <div class="sep"></div>
-            <button class="pn resp" type="button" data-r="out">Response<small>JSON</small></button>
+            <button class="pn" type="button" data-r="out">Response<small>JSON</small></button>
           </div>
           <div class="req-x" id="req-x"></div>
         </div>
@@ -853,7 +992,7 @@ ausm.onDetectorEvent((e) =&gt; { if (e.eventType === 'stuck') offerHelp(e.summar
 <script type="text/plain" id="skill-src">
 ---
 name: ausm
-description: Build context-aware apps and agents on macOS with AUSM (Activity Understanding and Scaffolding Medium). Use when code imports `ausm`, `ausm/runtime`, `ausm/bridge/*`, `@ausm/*`, `ScreenshotMonitorKit`, `CursorMonitorKit`, `ClipboardMonitorKit`, `WindowMonitorKit` or `TextInputMonitorKit`, or when the user wants an app to react to what they do on their Mac (text selection, typing, copy/paste, window focus, screenshots, cursor, screen frames, detected tasks).
+description: Build context-aware apps and agents on macOS with AUSM (Activity Understanding and Scaffolding Medium). Use when code imports `@ausm/ausm`, `@ausm/ausm/runtime`, `@ausm/ausm/bridge/*`, `@ausm/*`, `ScreenshotMonitorKit`, `CursorMonitorKit`, `ClipboardMonitorKit`, `WindowMonitorKit` or `TextInputMonitorKit`, or when the user wants an app to react to what they do on their Mac (text selection, typing, copy/paste, window focus, screenshots, cursor, screen frames, detected tasks).
 ---
 
 # AUSM
@@ -863,15 +1002,17 @@ threads) a user works with, and can classify the current task with a multimodal 
 Three layers, each optional on top of the one before:
 
 1. **Sensors** (`device-macos/*`): native helpers that emit events. macOS only.
-2. **Materials + memory**: window crops, perceptual hashes, OCR, SQLite store.
-3. **Understanding**: `DETECTOR.md` specs evaluated by a vision model (Vertex Gemini, Cerebras, or
-   any OpenAI-compatible endpoint, including a local one), producing `DetectorEvent` and `TaskEvent`.
+2. **Materials**: window crops, perceptual hashes, OCR. Memory is the SQLite store they are kept
+   in; Material Chat is an optional HTTP service for searching and asking about them.
+3. **Detectors**: `DETECTOR.md` specs evaluated by a vision model (Vertex Gemini, Cerebras, or
+   any OpenAI-compatible endpoint, including a local one), producing `DetectorEvent`. Tasks come
+   from the one built-in detector, `rapid-task`, as `TaskEvent`.
 
 ## Pick the integration path first
 
 | The host is | Use | Notes |
 | --- | --- | --- |
-| Node or Electron main process | `createRuntime()` from `ausm/runtime` | The full stack. Helpers run as child processes. |
+| Node or Electron main process | `createRuntime()` from `@ausm/ausm/runtime` | The full stack. Helpers run as child processes. |
 | Electron renderer | `window.ausm` via the bridge preload | Events only. Memory queries are main-process only. |
 | Native Swift / SwiftUI app | `ScreenshotMonitorKit`, `CursorMonitorKit`, `ClipboardMonitorKit`, `WindowMonitorKit`, `TextInputMonitorKit` (SwiftPM) | In-process, statically linked, no Node. Only these five sensors (no text selection, screen stream, camera, materials or detectors). |
 
@@ -881,18 +1022,33 @@ screenshot helper at once). Both install event taps or AX observers and report e
 ## Node / Electron
 
 ```bash
-npm install ausm
+npm install @ausm/ausm
 ```
 
-Requirements: macOS 13+, Node >= 18, Xcode Command Line Tools, Python >= 3.9 (materials, OCR).
+Requirements to use it from npm: macOS 13+ and Node >= 18. The native helpers ship prebuilt, so
+installing needs no Swift toolchain. Xcode Command Line Tools are only needed if a native module
+has no prebuilt binary for the host's Node or Electron version (`better-sqlite3`), and to build
+AUSM from a clone of the repo (which also needs Swift >= 5.9).
 
-Materials need the Python packages in the material-manager's `py/requirements.txt` (numpy,
-opencv-python-headless, pyobjc Vision/Quartz). Python is found as `materialManager.pythonPath`, then
-a `.venv` in the project, then `python3`. Without them, materials fail quietly (a warning in the log).
+Both `import` and `require` work for `@ausm/ausm`, `@ausm/ausm/runtime` and `@ausm/ausm/clients`. `@ausm/ausm/bridge`
+needs `electron` installed.
+
+What each layer needs on top:
+
+| Layer | Needs |
+| --- | --- |
+| Sensors | Accessibility for the host binary; Screen Recording for screenshots |
+| Materials | Screen Recording, `enableScreenStreaming`, `materialManager.enabled`, Python >= 3.9 with `pip install -r node_modules/@ausm/device-macos-material-manager/py/requirements.txt` (numpy, opencv-python-headless) |
+| OCR text | `memory: { ocrEnabled: true }` and `pip install -r node_modules/@ausm/core/src/memory/py/requirements.txt` (pyobjc Vision/Quartz) |
+| Detectors, tasks | Materials on, and a configured vision model |
+| Material Chat | `materialChat.enabled`, a real `materialManager.dbPath`, `ANTHROPIC_API_KEY` for ask and chat |
+
+Python is found as `materialManager.pythonPath`, then a `.venv` in the project, then `python3`.
+Without the packages, materials fail quietly (a warning in the log).
 
 ```ts
-import { createRuntime } from 'ausm/runtime';     // runtime: only from 'ausm/runtime'
-import type { MaterialEvent, TaskEvent } from 'ausm'; // types: from 'ausm'
+import { createRuntime } from '@ausm/ausm/runtime';     // runtime: only from '@ausm/ausm/runtime'
+import type { MaterialEvent, TaskEvent } from '@ausm/ausm'; // types: from '@ausm/ausm'
 
 const runtime = createRuntime({
   enableScreenStreaming: true,                      // needed for materials
@@ -949,7 +1105,7 @@ each `on*` method returns a function that unsubscribes.
 ### Queries (after `initialize()`, main process only)
 
 `getMaterials(limit)`, `getMaterialLatestFrame(id)`, `getMaterialFrames(id, limit)`,
-`getMaterialContent(id)` (OCR text), `getMaterialWeights(halfLifeDays)`,
+`getMaterialContent(id)` (`{ text, lineCount, frameCount, … }` or null), `getMaterialWeights(halfLifeDays)`,
 `getScreenshots(limit, since)`, `getScreenshot(id)`, `getScreenDisplays()`,
 `captureLatestScreenFrame()`, `getCameraDevices()`, `captureLatestCameraFrame()`,
 `freezeMemory()` / `unfreezeMemory()` / `isMemoryFrozen()`.
@@ -962,7 +1118,7 @@ These are stubs that return empty values. Do not build on them: `getImmediateCon
 
 ```ts
 // main.ts. Import the bridge BEFORE app.ready (it registers the ausm-screenshot:// scheme).
-import { setupAUSMElectronBridge, getAUSMPreloadPath } from 'ausm/bridge/electron';
+import { setupAUSMElectronBridge, getAUSMPreloadPath } from '@ausm/ausm/bridge/electron';
 
 const win = new BrowserWindow({
   webPreferences: { preload: getAUSMPreloadPath(), contextIsolation: true },
@@ -973,7 +1129,7 @@ const bridge = setupAUSMElectronBridge(win, runtime);
 Renderer: `window.ausm.onTextSelection(cb)`, `onScreenshot`, `onWindowState`, `onTextInput`,
 `onMaterialEvent`, `onCursorPlusPlusEvent`, `onCopyPasteEvent`, `onSpaceChange`, `onTaskEvent`,
 `onDetectorEvent`, `getScreenDisplays()`, `subscribeScreenStream(cb)`. To add your own preload
-API, write your own preload that calls `exposeAUSM()` from `ausm/bridge/preload-api` and exposes
+API, write your own preload that calls `exposeAUSM()` from `@ausm/ausm/bridge/preload-api` and exposes
 your namespace separately (with `contextIsolation: true`).
 
 Materials and memory run under the system `node`, not Electron's (`materialManager.nodePath` to
@@ -1046,6 +1202,19 @@ and a real `materialManager.dbPath`, and it sends the user's material text to An
 It listens on 127.0.0.1 and only answers requests with no `Origin` (main process) or from
 localhost and `file://` pages. A renderer on a custom scheme must be listed:
 `materialChat: { enabled: true, allowedOrigins: ['app://my-app'] }`.
+
+| Endpoint | Returns | Sends to Anthropic |
+| --- | --- | --- |
+| `GET /memory/search?q=` (`top_k`, `bundle`, `since`, `recency_weight`, `dwell_weight`, `recency_half_life`) | `{ hits }` ranked by text match, recency and frames kept | No |
+| `GET /memory/recent` (`top_k`, `since`, `until`, `bundle`) | `{ hits }`, newest first | No |
+| `GET /material/:id` | `{ id, text, title, application, firstSeen, lastSeen, frameCount }` | No |
+| `POST /ask` `{ question }` | `{ markdown, citations, hits, … }` | Yes |
+| `POST /chat/stream` `{ question, sessionId? }` | SSE: `session`, `agent_step`, `tool_call`, `tool_result`, `token`, `usage`, `citations`, `done` | Yes |
+| `GET`/`POST /sessions`, `GET`/`PATCH`/`DELETE /sessions/:id` | Saved chats | No |
+
+Search only covers materials that have OCR text, so turn on `memory.ocrEnabled`. Without
+`ANTHROPIC_API_KEY` the search, recent and read endpoints still work; ask and chat return 500.
+If the app exits without `shutdown()`, the service is stopped with it.
 
 ## Native Swift
 
@@ -1238,7 +1407,88 @@ the user what to grant; do not retry in a loop.
       });
     } catch (e) { return Promise.resolve(null); }
   }
+  /* What each material collects. One cube per MaterialEvent, dropped on the material it belongs to. */
+  var MX = [
+    { t: "Understanding and Using Context", app: "Safari", w: [72, 94, 60] },
+    { t: "foundation-interface/ausm", app: "Safari", w: [48, 86, 70] },
+    { t: "draft.md", app: "Notes", w: [56, 90, 78] },
+    { t: "#study-design", app: "Slack", w: [84, 52, 66] }
+  ];
+  var MXK = [["created", "MATERIAL_CREATED", "Created"], ["focused", "MATERIAL_FOCUSED", "Focused"], ["frame", "FRAME_CAPTURED", "Frame kept"], ["content", "MATERIAL_CONTENT_UPDATED", "Text read"], ["unfocused", "MATERIAL_UNFOCUSED", "Unfocused"]];
+  function initCubes() {
+    var host = $("#mx"), key = $("#mx-key"), cur = -1, quiet = true, left = 4, lastUser = 0;
+    var cnt = MX.map(function () { return {}; });
+    host.innerHTML = MX.map(function (m, i) {
+      return '<button class="mx-card" type="button" data-i="' + i + '" aria-pressed="false">' +
+        '<span class="mx-win"><span class="dots"><i></i><i></i><i></i></span><span class="mx-win-b">' +
+        m.w.map(function (w) { return '<i style="width:' + w + '%"></i>'; }).join("") + "</span></span>" +
+        '<span class="mx-t">' + esc(m.t) + '</span><span class="mx-m"></span><span class="mx-pile"></span></button>';
+    }).join("");
+    key.innerHTML = MXK.map(function (k) { return '<button class="mx-k" type="button" data-k="' + k[0] + '"><i class="cube" data-k="' + k[0] + '"></i>' + k[2] + " <b>0</b></button>"; }).join("");
+    var tip = document.createElement("div"); tip.className = "ftip"; host.appendChild(tip);
+    var cards = $$(".mx-card", host);
+    function stamp() { var d = new Date(); return [d.getHours(), d.getMinutes(), d.getSeconds()].map(function (n) { return ("0" + n).slice(-2); }).join(":"); }
+    function add(i, k, delay) {
+      var pile = $(".mx-pile", cards[i]), c = document.createElement("i");
+      c.className = "cube"; c.dataset.k = k; c.dataset.at = stamp();
+      cnt[i][k] = (cnt[i][k] || 0) + 1;
+      if (!quiet && !calm) {
+        c.classList.add("drop"); c.style.animationDelay = (delay || 0) + "ms";
+        c.addEventListener("animationend", function () { c.classList.remove("drop"); });
+      }
+      pile.appendChild(c);
+      while (pile.children.length > 60) pile.removeChild(pile.firstChild);   // oldest dropped, like frames
+    }
+    function paint() {
+      cards.forEach(function (c, i) {
+        c.classList.toggle("on", i === cur); c.setAttribute("aria-pressed", String(i === cur));
+        $(".mx-m", c).textContent = MX[i].app + " · " + (cnt[i].frame || 0) + " frames · " + (cnt[i].focused || 0) + " visits";
+      });
+      MXK.forEach(function (k) {
+        $('.mx-k[data-k="' + k[0] + '"] b', key).textContent = cnt.reduce(function (n, c) { return n + (c[k[0]] || 0); }, 0);
+      });
+    }
+    // Leaving a material: a last frame, the unfocus, then OCR reads what was on it. Arriving: created once, focused, first frame.
+    function focus(i) {
+      if (i === cur) return;
+      if (cur >= 0) { add(cur, "frame", 0); add(cur, "unfocused", 90); add(cur, "content", 260); }
+      cur = i;
+      if (!cnt[i].created) add(i, "created", 120);
+      add(i, "focused", 200); add(i, "frame", 320);
+      paint();
+    }
+    function tick() {
+      if (pages.materials.hidden || document.hidden) return;
+      var driving = Date.now() - lastUser < 6000;
+      if (!driving && --left <= 0) {
+        left = 3 + Math.floor(Math.random() * 5);
+        var n = cur; while (n === cur) n = Math.floor(Math.random() * MX.length);
+        focus(n);
+      } else if (Math.random() < .55) { add(cur, "frame"); paint(); }
+    }
+    // A little history first, so the piles read at a glance.
+    [2, 0, 2, 3, 0, 1, 2].forEach(function (i, s) { focus(i); for (var f = s % 3 + 1; f--;) add(i, "frame"); });
+    quiet = false; paint();
+    if (!calm) setInterval(tick, 900);
+
+    host.addEventListener("click", function (e) { var c = e.target.closest(".mx-card"); if (!c) return; lastUser = Date.now(); focus(+c.dataset.i); });
+    host.addEventListener("mouseover", function (e) {
+      var c = e.target.closest(".mx-pile .cube"); if (!c) { tip.classList.remove("on"); return; }
+      var r = host.getBoundingClientRect(), b = c.getBoundingClientRect();
+      tip.textContent = MXK.filter(function (x) { return x[0] === c.dataset.k; })[0][1] + " · " + c.dataset.at;
+      tip.style.left = (b.left - r.left + b.width / 2) + "px"; tip.style.top = (b.top - r.top - 6) + "px";
+      tip.classList.add("on");
+    });
+    host.addEventListener("mouseleave", function () { tip.classList.remove("on"); });
+    // Pointing at a kind in the legend picks its cubes out of every pile.
+    function pickKind(e) { var b = e.target.closest(".mx-k"); if (b) host.dataset.f = b.dataset.k; }
+    function dropKind() { delete host.dataset.f; }
+    key.addEventListener("mouseover", pickKind); key.addEventListener("focusin", pickKind);
+    key.addEventListener("mouseleave", dropKind); key.addEventListener("focusout", dropKind);
+  }
+
   init.materials = function () {
+    initCubes();
     var tabs = $("#id-tabs"), sel = 0, dup = false;
     tabs.innerHTML = TABS.map(function (t, i) { return '<button class="stab" type="button" role="tab" data-i="' + i + '" aria-selected="' + (i === 0) + '">' + esc(t.length > 18 ? t.slice(0, 16) + "…" : t) + "</button>"; }).join("");
     function bump(el, txt) { if (el.textContent === txt) return; el.textContent = txt; replay(el, "bump"); setTimeout(function () { el.classList.remove("bump"); }, 30); }
@@ -1302,7 +1552,7 @@ the user what to grant; do not retry in a loop.
     run();
   };
 
-  /* ---------- 03 memory ---------- */
+  /* ---------- 02 materials › memory ---------- */
   var TABLES = [
     { id: "materials", col: 0, s: "one row per material", w: "Created when a new title appears in a window. Updated on every focus.",
       c: [["material_id", "PK"], ["title"], ["window_id"], ["application"], ["bundle_id"], ["document_path"], ["app_metadata_json"], ["first_seen"], ["last_seen"], ["total_time_ms"]] },
@@ -1345,14 +1595,19 @@ the user what to grant; do not retry in a loop.
     erdSel = id;
     var rel = related(id), t = TABLES.filter(function (x) { return x.id === id; })[0];
     $("#erd").classList.add("focus");
-    $$("#erd .tb").forEach(function (b) { b.classList.toggle("on", b.dataset.t === id); b.classList.toggle("rel", rel.indexOf(b.dataset.t) >= 0); });
+    var k = 0;
+    $$("#erd .tb").forEach(function (b) {
+      var on = b.dataset.t === id, isRel = rel.indexOf(b.dataset.t) >= 0;
+      b.classList.toggle("on", on); b.classList.toggle("rel", isRel);
+      if (!first && !calm && (on || isRel)) { b.style.setProperty("--d", (on ? 0 : ++k * 70) + "ms"); replay(b, "lit"); }
+    });
     var d = $("#erd-detail");
     d.innerHTML = "<div><h4>" + esc(t.id) + "</h4><p>" + esc(t.w) + "</p></div><ul class=\"cols\">" +
       t.c.map(function (c) { return "<li>" + esc(c[0]) + (c[1] ? "<em>" + esc(c[1]) + "</em>" : "") + "</li>"; }).join("") + "</ul>";
     if (!first) replay(d, "swap");
-    drawErd();
+    drawErd(!first);
   }
-  function drawErd() {
+  function drawErd(draw) {
     var erd = $("#erd"), svg = $("#erd-svg"); if (!erd || erd.offsetParent === null) return;
     var r = erd.getBoundingClientRect(), html = "";
     function box(id) { var b = $('.tb[data-t="' + id + '"]', erd); return b && b.getBoundingClientRect(); }
@@ -1363,14 +1618,18 @@ the user what to grant; do not retry in a loop.
       var x1, y1, x2, y2;
       if (Math.abs(a.left - b.left) < 4) { // same column: bracket on the left
         x1 = a.left - r.left; y1 = a.top - r.top + a.height / 2; x2 = b.left - r.left; y2 = b.top - r.top + b.height / 2;
-        html += '<path class="' + (on ? "on" : "") + '" d="M' + x1 + " " + y1 + " C" + (x1 - 22) + " " + y1 + " " + (x2 - 22) + " " + y2 + " " + x2 + " " + y2 + '"/>';
+        html += '<path pathLength="1" class="' + (on ? "on" : "") + '" d="M' + x1 + " " + y1 + " C" + (x1 - 22) + " " + y1 + " " + (x2 - 22) + " " + y2 + " " + x2 + " " + y2 + '"/>';
       } else {
         x1 = a.right - r.left; y1 = a.top - r.top + Math.min(a.height / 2, 22); x2 = b.left - r.left; y2 = b.top - r.top + b.height / 2;
         var mx = (x1 + x2) / 2;
-        html += '<path class="' + (on ? "on" : "") + '" d="M' + x1 + " " + y1 + " C" + mx + " " + y1 + " " + mx + " " + y2 + " " + x2 + " " + y2 + '"/>';
+        html += '<path pathLength="1" class="' + (on ? "on" : "") + '" d="M' + x1 + " " + y1 + " C" + mx + " " + y1 + " " + mx + " " + y2 + " " + x2 + " " + y2 + '"/>';
       }
     });
     svg.innerHTML = html;
+    // The wires to the selected table draw themselves. No forwards fill: if the animation never runs, the lines are simply there.
+    if (draw === true && !calm) $$("path.on", svg).forEach(function (p, i) {
+      if (p.animate) p.animate([{ strokeDashoffset: 1 }, { strokeDashoffset: 0 }], { duration: 600, delay: i * 60, easing: "cubic-bezier(.22,1,.36,1)", fill: "backwards" });
+    });
   }
   function initDecay() {
     var host = $("#dc"), h = $("#dc-h"), W = 640, H = 190, P = { l: 34, r: 12, t: 12, b: 26 }, DAYS = 60;
@@ -1404,34 +1663,87 @@ the user what to grant; do not retry in a loop.
     draw();
   }
 
-  /* ---------- 04 tasks ---------- */
+  /* ---------- 02 materials › chat ---------- */
+  var SENT = "Question and material text, to Anthropic";
+  var CHAT = [
+    { n: "Search", ai: 0, req: "GET /memory/search?q=…", reads: "Full-text index over titles and OCR text", ret: "hits[]", out: "Nothing",
+      meta: ["<b>top_k</b> 10", "<b>bundle</b>", "<b>since</b>", "<b>recency_weight</b> 0.5", "<b>dwell_weight</b> 0.3", "<b>recency_half_life</b> 30 days"],
+      j: { hits: [{ material_id: "mat_3a9f0c21b7d4", title: "Understanding and Using Context", bundle_id: "com.apple.Safari", first_seen: "2026-11-16 13:21:40", last_seen: "2026-11-16 14:02:21", frame_count: 6, snippet: "⟦Context⟧ is any information that can be used…", bm25: 4.18, recency: 0.99, dwell: 1.95, score: 5.26 }] } },
+    { n: "Recent", ai: 0, req: "GET /memory/recent", reads: "Materials with text, newest first", ret: "hits[]", out: "Nothing",
+      meta: ["<b>top_k</b> 20", "<b>since</b>", "<b>until</b>", "<b>bundle</b>"],
+      j: { hits: [{ material_id: "mat_7c21e0a4d913", title: "draft.md", bundle_id: "com.apple.Notes", first_seen: "2026-11-16 13:10:02", last_seen: "2026-11-16 14:03:55", frame_count: 3 }] } },
+    { n: "Read one", ai: 0, req: "GET /material/:id", reads: "One material's merged OCR text", ret: "text + metadata", out: "Nothing",
+      meta: ["<b>404</b> for an unknown id"],
+      j: { id: "mat_7c21e0a4d913", text: "Study plan, week 3. Most context switches happened right after a copy…", title: "draft.md", application: "com.apple.Notes", firstSeen: "2026-11-16 13:10:02", lastSeen: "2026-11-16 14:03:55", frameCount: 3 } },
+    { n: "Ask", ai: 1, req: "POST /ask", reads: "A Claude agent that searches, lists and reads materials", ret: "markdown + citations", out: SENT,
+      meta: ["Body <b>{ question }</b>", "Tools <b>personal_search · personal_recent · read_material</b>"],
+      j: { question: "What does the Dey paper say context is?", markdown: "Any information that characterizes the situation of an entity [1].", citations: [{ index: 1, kind: "personal", ref: "mat_3a9f0c21b7d4", title: "Understanding and Using Context", url: "material://mat_3a9f0c21b7d4" }] } },
+    { n: "Chat", ai: 1, req: "POST /chat/stream", reads: "The same agent, with the session's history", ret: "Server-sent events", out: SENT,
+      meta: ["Body <b>{ question, sessionId? }</b>", "<b>session</b>", "<b>agent_step</b>", "<b>tool_call</b>", "<b>tool_result</b>", "<b>token</b>", "<b>usage</b>", "<b>citations</b>", "<b>done</b>"],
+      raw: 'event: session\ndata: {"type":"session","sessionId":"…","title":"…"}\n\nevent: token\ndata: {"type":"token","text":"Any information that "}\n\nevent: done\ndata: {"type":"done","markdown":"…","citations":[…],"hits":[…]}' },
+    { n: "Sessions", ai: 0, req: "GET /sessions", reads: "sessions.json in materialChat.dataDir", ret: "Saved chats", out: "Nothing",
+      meta: ["<b>POST</b> /sessions", "<b>GET · PATCH · DELETE</b> /sessions/:id"],
+      j: [{ id: "…", title: "Dey paper", createdAt: 1794866541000, updatedAt: 1794866583000, messageCount: 4 }] }
+  ];
+  init.chat = function () {
+    var list = $("#cx-list");
+    list.innerHTML = CHAT.map(function (c, i) {
+      return '<button class="sx-b" type="button" role="tab" data-i="' + i + '" aria-selected="false"><i class="dot' + (c.ai ? " on" : "") + '"></i>' + esc(c.n) + "</button>";
+    }).join("");
+    function pick(i) {
+      var c = CHAT[i];
+      $$(".sx-b", list).forEach(function (b) { b.setAttribute("aria-selected", String(+b.dataset.i === i)); });
+      $("#cx-req").innerHTML = "<code>" + esc(c.req) + "</code>";
+      $("#cx-reads").textContent = c.reads;
+      $("#cx-ret").textContent = c.ret;
+      $("#cx-out").textContent = c.out;
+      $("#cx-meta").innerHTML = c.meta.map(function (m) { return "<span>" + m + "</span>"; }).join("");
+      var pre = $("#cx-json"); if (c.raw) pre.textContent = c.raw; else pre.innerHTML = json(c.j); replay(pre, "swap");
+      if (!calm) $$("#cx-flow .fnode").forEach(function (n, k) { n.style.setProperty("--d", (k * 90) + "ms"); replay(n, "lit"); });
+    }
+    list.addEventListener("click", function (e) { var b = e.target.closest(".sx-b"); if (b) pick(+b.dataset.i); });
+    list.addEventListener("keydown", function (e) {
+      var cur = +($(".sx-b[aria-selected=true]", list) || {}).dataset.i || 0;
+      var d = e.key === "ArrowDown" || e.key === "ArrowRight" ? 1 : e.key === "ArrowUp" || e.key === "ArrowLeft" ? -1 : 0;
+      if (!d) return; e.preventDefault();
+      var n = (cur + d + CHAT.length) % CHAT.length; pick(n); $$(".sx-b", list)[n].focus();
+    });
+    pick(0);
+  };
+
+  /* ---------- 03 detectors ---------- */
   var PIPE = {
     frame: "<b>The focused window's latest kept frame</b>, downsized to JPEG right before the call. Not the full screen.",
     events: "<b>A rolling buffer</b> of recent events, filtered to the focused app. The last 40 go into the prompt.",
     group: "<b>Detectors that want the same inputs share one call.</b> Same <code>sources</code> + <code>events</code> means same group. <code>isolated: true</code> gets its own.",
     call: "<b>Each group runs on its own timer</b> (<code>interval</code>), or on every new frame with <code>trigger: screen</code>. The model returns which rules fired.",
     detector: "<b>Each fired rule becomes a DetectorEvent</b> with <code>eventType</code>, <code>confidence</code>, <code>summary</code>, <code>evidence</code>. Then it rests for <code>cooldown</code> ms.",
-    task: "<b>The built-in <code>rapid-task</code> detector</b> only returns a short label. TaskTracker turns labels into stable task ids. Try it below."
+    task: "<b>The built-in <code>rapid-task</code> detector</b> only returns a short label. TaskTracker turns labels into stable task ids. See <a href=\"#docs/detectors/tasks\">Tasks</a>."
   };
-  init.tasks = function () {
+  init.detectors = function () {
     var pipe = $("#pipe"), det = $("#pdetail"), order = ["frame", "events", "group", "call", "detector", "task"], timer = null, step = 0;
     function pick(k, auto) {
       $$(".pn", pipe).forEach(function (b) { b.setAttribute("aria-pressed", String(b.dataset.p === k)); });
       det.innerHTML = PIPE[k];
       if (!auto) { clearInterval(timer); timer = null; }
+      if (calm) return;
+      // The step rises, the wire into it draws, the explanation settles in.
+      var b = $('.pn[data-p="' + k + '"]', pipe), wire = b.closest(".pstack").previousElementSibling;
+      replay(b, "lit"); if (wire) replay(wire, "lit"); replay(det, "swap");
     }
     pipe.addEventListener("click", function (e) { var b = e.target.closest(".pn"); if (b) pick(b.dataset.p); });
     pick("frame", true);
     if (!calm) {
       timer = setInterval(function () {
-        if (pages.tasks.hidden) return;
+        if (pages.detectors.hidden || document.hidden) return;
         step = (step + 1) % order.length;
-        var b = $('.pn[data-p="' + order[step] + '"]', pipe); replay(b, "pulse"); pick(order[step], true);
+        pick(order[step], true);
       }, 2600);
     }
-    initTracker();
     initDetectorFile();
   };
+  /* ---------- 03 detectors › tasks ---------- */
+  init.tasks = initTracker;
 
   /* TaskTracker: ported from packages/core/src/detectors/TaskTracker.ts */
   function norm(v) { return v.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim(); }
@@ -1445,46 +1757,47 @@ the user what to grant; do not retry in a loop.
   function simLabel(a, b) { var na = norm(a), nb = norm(b); if (!na || !nb) return false; return na === nb || overlap(na, nb) >= .7; }
   function sameWork(pl, pd, nl, nd) { return simLabel(pl, nl) && (simText(pd, nd) || simText(pl + " " + pd, nl + " " + nd)); }
   var SAY = [
-    { l: "Reading paper", d: "Understanding and Using Context, Safari" },
-    { l: "Reading paper", d: "Understanding and Using Context, definitions section" },
+    { l: "Reading paper", d: "Dey 2001, in Safari" },
+    { l: "Reading paper", d: "Dey 2001, definitions" },
     { l: "Writing notes", d: "study plan in Notes" },
-    { l: "Writing notes", d: "weekly study schedule draft" },
-    { l: "Reading paper", d: "Understanding and Using Context, Safari" }
+    { l: "Writing notes", d: "study plan, week 3" },
+    { l: "Reading paper", d: "Dey 2001, in Safari" }
   ];
   function initTracker() {
-    var cur = null, n = 0, log = $("#tt-log"), say = $("#tt-say");
-    say.innerHTML = SAY.map(function (s, i) { return '<button class="chip" type="button" data-i="' + i + '">' + esc(s.l) + "<small>" + esc(s.d) + "</small></button>"; }).join("");
-    function pct(x) { return Math.round(x * 100) + "%"; }
-    function add(status, task) {
-      var li = document.createElement("li");
-      li.innerHTML = '<div class="card fresh"><span class="card-k">' + task.id + '</span><span class="card-s"><span class="tag">' + status + "</span>" + esc(task.l) + "</span></div>";
-      log.insertBefore(li, log.firstChild);
-      var c = li.firstChild; setTimeout(function () { c.classList.remove("fresh"); }, 2200);
-      if (!calm && li.animate) li.animate([{ opacity: 0, transform: "translateY(-6px)" }, { opacity: 1, transform: "none" }], { duration: 380, easing: "cubic-bezier(.22,1,.36,1)" });
-    }
-    function apply(l, d) {
-      l = l.trim(); d = (d || "").trim() || l; if (!l) return;
-      var action, why;
-      if (!cur) { action = "begin"; why = "No current task, so it begins one."; }
+    var calls = $("#tk-calls"), spansEl = $("#tk-spans"), why = $("#tk-why"), timer = null, at = 0;
+    function pct(a, b) { return norm(a) === norm(b) ? "identical" : Math.round(overlap(norm(a), norm(b)) * 100) + "% alike"; }
+    // Run the real rule over the five answers: which task each lands in, and why.
+    var cur = null, n = 0, spans = [], steps = SAY.map(function (s, i) {
+      var text;
+      if (!cur) text = "<b>Nothing is tracked yet, so this starts a task.</b> Your app gets <code>TASK_DETECTED</code>.";
       else {
-        var lo = overlap(norm(cur.l), norm(l)), dov = overlap(norm(cur.d), norm(d));
-        var lab = "label " + (norm(cur.l) === norm(l) ? "identical" : pct(lo)) + ", description " + (norm(cur.d) === norm(d) ? "identical" : pct(dov)) + ". ";
-        if (sameWork(cur.l, cur.d, l, d)) {
-          action = simText(cur.d, d) ? "continue" : "update";
-          why = lab + (action === "continue" ? "Same work, same id." : "Same work, new detail. Same id, updated.");
-        } else { action = "switch"; why = lab + "Different work: the old task completes, a new one begins."; }
+        var cmp = "Against the answer before: label " + pct(cur.l, s.l) + ", description " + pct(cur.d, s.d) + ". ";
+        if (sameWork(cur.l, cur.d, s.l, s.d)) text = "<b>Same work, so " + cur.id + " carries on.</b> " + cmp + "Your app gets <code>TASK_UPDATED</code>.";
+        else {
+          var back = spans.some(function (p) { return norm(p.l) === norm(s.l); });
+          text = "<b>Different work, so " + cur.id + " ends and a new task starts.</b> " + cmp + "Your app gets <code>TASK_COMPLETED</code>, then <code>TASK_DETECTED</code>." +
+            (back ? " Going back to earlier work still starts a new id: only the task before is compared." : "");
+          cur = null;
+        }
       }
-      if (action === "begin" || action === "switch") {
-        if (cur) add("COMPLETED", cur);
-        cur = { id: "task_" + (++n), l: l, d: d }; add("DETECTED", cur);
-      } else { cur.l = l; cur.d = d; add("UPDATED", cur); }
-      $("#tt-cur").innerHTML = "<b>Current task</b><span>" + esc(cur.l) + "</span><code>" + cur.id + " · " + esc(cur.d) + "</code>";
-      $("#tt-why").innerHTML = "<code>" + action + "</code> · " + esc(why);
+      if (!cur) { cur = { id: "task_" + (++n), l: s.l, from: i, len: 0 }; spans.push(cur); }
+      cur.d = s.d; cur.len++;
+      return { text: text, span: cur };
+    });
+    calls.innerHTML = SAY.map(function (s, i) { return '<button class="pn" type="button" data-i="' + i + '" aria-pressed="false">' + esc(s.l) + "<small>" + esc(s.d) + "</small></button>"; }).join("");
+    spansEl.innerHTML = spans.map(function (p) { return '<div class="tk-span" style="grid-column: span ' + p.len + '"><code>' + p.id + "</code>" + esc(p.l) + "</div>"; }).join("");
+    var btns = $$(".pn", calls), bars = $$(".tk-span", spansEl);
+    function pick(i, auto) {
+      at = i;
+      btns.forEach(function (b, k) { b.setAttribute("aria-pressed", String(k === i)); b.classList.toggle("later", k > i); });
+      bars.forEach(function (el, k) { el.classList.toggle("on", spans[k] === steps[i].span); el.classList.toggle("later", spans[k].from > i); });
+      why.innerHTML = steps[i].text;
+      if (!auto) { clearInterval(timer); timer = null; }
+      if (!calm) { replay(btns[i], "lit"); replay(why, "swap"); }
     }
-    say.addEventListener("click", function (e) { var b = e.target.closest(".chip"); if (!b) return; var s = SAY[+b.dataset.i]; b.classList.add("used"); apply(s.l, s.d); });
-    $("#tt-form").addEventListener("submit", function (e) { e.preventDefault(); var v = $("#tt-input").value; var p = v.split(":"); apply(p[0], p.slice(1).join(":")); $("#tt-input").value = ""; });
-    $("#tt-reset").addEventListener("click", function () { cur = null; n = 0; log.innerHTML = ""; $("#tt-cur").innerHTML = "<b>Current task</b><span>None</span>"; $("#tt-why").textContent = ""; $$(".chip", say).forEach(function (c) { c.classList.remove("used"); }); });
-    $("#tt-input").placeholder = "Or type “label: detail”…";
+    calls.addEventListener("click", function (e) { var b = e.target.closest(".pn"); if (b) pick(+b.dataset.i); });
+    pick(0, true);
+    if (!calm) timer = setInterval(function () { if (pages.tasks.hidden || document.hidden) return; pick((at + 1) % SAY.length, true); }, 3200);
   }
 
   var DMD = {
@@ -1510,7 +1823,7 @@ the user what to grant; do not retry in a loop.
     show("event");
   }
 
-  /* ---------- 05 models ---------- */
+  /* ---------- 03 detectors › models ---------- */
   var REQ = {
     system: ["Same for every call. Defines the job and the only allowed output shape.", "You are a screen activity analyzer. You evaluate\ndetection rules against screenshots and recent\nuser activity events…\n\nRespond ONLY with compact JSON."],
     state: ["Added when a task is active, so the model can tell if you're still on it.", "## Current Task State\nCurrent task: \"Reading paper\" — Understanding\nand Using Context (id: task_1)"],
@@ -1569,10 +1882,10 @@ the user what to grant; do not retry in a loop.
     $$(".nav [data-view]").forEach(function (b) { if (b.dataset.view === name) b.setAttribute("aria-current", "page"); else b.removeAttribute("aria-current"); });
     if (changed) window.scrollTo(0, 0);
   }
-  function route() { var h = (location.hash || "").slice(1); if (h.indexOf("docs") === 0) { var pg = h.split("/")[1] || "sensors"; var was = current; show("docs"); if (window.__ausmDoc) window.__ausmDoc(pg); if (was === "docs") window.scrollTo(0, 0); return; } show(h === "agent-skill" ? "agent-skill" : "home"); }
+  function route() { var h = (location.hash || "").slice(1); if (h.indexOf("docs") === 0) { var pg = h.split("/").pop(); var was = current; show("docs"); if (window.__ausmDoc) window.__ausmDoc(pg); if (was === "docs") window.scrollTo(0, 0); return; } show(h === "agent-skill" ? "agent-skill" : "home"); }
   $$("[data-view]").forEach(function (b) { b.addEventListener("click", function () { location.hash = b.dataset.view === "home" ? "overview" : b.dataset.view === "docs" ? "docs/sensors" : b.dataset.view; }); });
   window.addEventListener("hashchange", route); route();
-  $$('a[href="#start"]').forEach(function (a) { a.addEventListener("click", function (e) { e.preventDefault(); $("#start").scrollIntoView({ behavior: "smooth", block: "start" }); }); });
+  $$('a[href="#start"], a[href="#swift"]').forEach(function (a) { a.addEventListener("click", function (e) { e.preventDefault(); $(a.getAttribute("href")).scrollIntoView({ behavior: "smooth", block: "start" }); }); });
 
   /* theme */
   (function () {
@@ -1596,16 +1909,16 @@ the user what to grant; do not retry in a loop.
   $$("[data-copy]").forEach(function (b) { b.addEventListener("click", function () { copyText($(b.dataset.copy).textContent, b); }); });
 
   /* install + code tabs */
-  var INSTALL = { npm: "npm install ausm", swift: '.package(url: "https://github.com/foundation-interface/ausm.git", from: "0.1.0")' };
+  var INSTALL = {
+    npm: { cmd: "npm install @ausm/ausm", note: "Node 18+. The native helpers ship prebuilt." },
+    swift: { cmd: '.package(url: "https://github.com/foundation-interface/ausm.git", from: "0.1.0")', note: "Five sensors, compiled into your app. Materials and detectors need Node." }
+  };
   $$("[data-install]").forEach(function (b) { b.addEventListener("click", function () {
     $$("[data-install]").forEach(function (o) { o.setAttribute("aria-selected", String(o === b)); });
-    var c = $("#install-code"); c.textContent = INSTALL[b.dataset.install]; $("#install-note").textContent = b.dataset.install === "swift" ? "In-process kits for five sensors. Materials, memory and tasks need Node." : "The full stack: sensors, materials, memory and tasks."; c.classList.toggle("noprompt", b.dataset.install === "swift");
+    var pick = INSTALL[b.dataset.install], c = $("#install-code");
+    c.textContent = pick.cmd; c.classList.toggle("noprompt", b.dataset.install === "swift");
+    $("#install-note").textContent = pick.note;
   }); });
-  $$("[data-lang-tab]").forEach(function (b) { b.addEventListener("click", function () {
-    $$("[data-lang-tab]").forEach(function (o) { o.setAttribute("aria-selected", String(o === b)); });
-    $$("[data-tab]").forEach(function (el) { el.hidden = el.dataset.tab !== b.dataset.langTab; });
-  }); });
-
   /* code highlighting: comments and strings only */
   $$("pre.code").forEach(function (pre) {
     var src = pre.textContent, out = "", i = 0;

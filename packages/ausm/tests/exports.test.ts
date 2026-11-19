@@ -122,6 +122,6 @@ describe('ausm package exports', () => {
     });
 
     test('package.json is exported for tooling', () => {
-        assert.equal((selfRequire(`${pkg.name}/package.json`) as { name: string }).name, 'ausm');
+        assert.equal((selfRequire(`${pkg.name}/package.json`) as { name: string }).name, '@ausm/ausm');
     });
 });

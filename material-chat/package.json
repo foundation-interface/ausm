@@ -19,7 +19,7 @@
     }
   },
   "bin": {
-    "material-chat": "./dist/server.js"
+    "material-chat": "dist/server.js"
   },
   "files": [
     "dist",

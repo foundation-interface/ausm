@@ -29,6 +29,15 @@ export default defineConfig({
   sourcemap: true,
   splitting: false,
   treeshake: true,
+  // The runtime loads optional sensors lazily with require() and finds helpers through
+  // __dirname. Neither exists in an ES module, so `import { createRuntime } from '@ausm/ausm/runtime'`
+  // started with every sensor failing ("Dynamic require of … is not supported"). The shims give
+  // the ESM build __dirname, and the banner gives it a real require.
+  shims: true,
+  banner: ({ format }) =>
+    format === 'esm'
+      ? { js: "import { createRequire as __ausmCreateRequire } from 'module';\nconst require = __ausmCreateRequire(import.meta.url);" }
+      : {},
   outDir: 'dist',
   external: [
     '@ausm/core/clients',

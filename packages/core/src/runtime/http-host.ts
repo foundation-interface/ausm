@@ -40,7 +40,10 @@ export class HttpHost {
         if (this.url) return this.url;
 
         const port = this.options.port ?? 8788;
-        const dbPath = this.options.dbPath ?? ':memory:';
+        // The host runs with its own package folder as cwd, so a relative path would open a
+        // different (empty) file than the one the memory service writes next to the app.
+        const rawDbPath = this.options.dbPath ?? ':memory:';
+        const dbPath = rawDbPath === ':memory:' ? rawDbPath : path.resolve(rawDbPath);
         const nodePath = this.options.nodePath ?? resolveSystemNode();
         const { cwd, args } = resolveServer();
 
@@ -55,7 +58,7 @@ export class HttpHost {
             env.NODE_PATH = [nodePathExtra, process.env.NODE_PATH].filter(Boolean).join(path.delimiter);
         }
         if (this.options.materialChat?.dataDir) {
-            env.MATERIAL_CHAT_DATA_DIR = this.options.materialChat.dataDir;
+            env.MATERIAL_CHAT_DATA_DIR = path.resolve(this.options.materialChat.dataDir);
         }
         if (this.options.materialChat?.allowedOrigins?.length) {
             env.MATERIAL_CHAT_ALLOWED_ORIGINS = this.options.materialChat.allowedOrigins.join(',');
@@ -69,6 +72,14 @@ export class HttpHost {
             stdio: ['ignore', 'pipe', 'pipe'],
         });
         this.process = child;
+
+        // If the app exits without calling stop(), take the host down with it. Left running it
+        // keeps the port, and the next start fails with EADDRINUSE.
+        const killOnExit = () => {
+            if (child.exitCode === null && !child.killed) child.kill('SIGTERM');
+        };
+        process.once('exit', killOnExit);
+        child.once('exit', () => process.removeListener('exit', killOnExit));
 
         const ready = waitForListen(child, port);
         child.on('error', (err) => {

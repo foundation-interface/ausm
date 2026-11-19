@@ -1,6 +1,6 @@
 ---
 name: ausm
-description: Build context-aware apps and agents on macOS with AUSM (Activity Understanding and Scaffolding Medium). Use when code imports `ausm`, `ausm/runtime`, `ausm/bridge/*`, `@ausm/*`, `ScreenshotMonitorKit`, `CursorMonitorKit`, `ClipboardMonitorKit`, `WindowMonitorKit` or `TextInputMonitorKit`, or when the user wants an app to react to what they do on their Mac (text selection, typing, copy/paste, window focus, screenshots, cursor, screen frames, detected tasks).
+description: Build context-aware apps and agents on macOS with AUSM (Activity Understanding and Scaffolding Medium). Use when code imports `@ausm/ausm`, `@ausm/ausm/runtime`, `@ausm/ausm/bridge/*`, `@ausm/*`, `ScreenshotMonitorKit`, `CursorMonitorKit`, `ClipboardMonitorKit`, `WindowMonitorKit` or `TextInputMonitorKit`, or when the user wants an app to react to what they do on their Mac (text selection, typing, copy/paste, window focus, screenshots, cursor, screen frames, detected tasks).
 ---
 
 # AUSM
@@ -10,15 +10,17 @@ threads) a user works with, and can classify the current task with a multimodal 
 Three layers, each optional on top of the one before:
 
 1. **Sensors** (`device-macos/*`): native helpers that emit events. macOS only.
-2. **Materials + memory**: window crops, perceptual hashes, OCR, SQLite store.
-3. **Understanding**: `DETECTOR.md` specs evaluated by a vision model (Vertex Gemini, Cerebras, or
-   any OpenAI-compatible endpoint, including a local one), producing `DetectorEvent` and `TaskEvent`.
+2. **Materials**: window crops, perceptual hashes, OCR. Memory is the SQLite store they are kept
+   in; Material Chat is an optional HTTP service for searching and asking about them.
+3. **Detectors**: `DETECTOR.md` specs evaluated by a vision model (Vertex Gemini, Cerebras, or
+   any OpenAI-compatible endpoint, including a local one), producing `DetectorEvent`. Tasks come
+   from the one built-in detector, `rapid-task`, as `TaskEvent`.
 
 ## Pick the integration path first
 
 | The host is | Use | Notes |
 | --- | --- | --- |
-| Node or Electron main process | `createRuntime()` from `ausm/runtime` | The full stack. Helpers run as child processes. |
+| Node or Electron main process | `createRuntime()` from `@ausm/ausm/runtime` | The full stack. Helpers run as child processes. |
 | Electron renderer | `window.ausm` via the bridge preload | Events only. Memory queries are main-process only. |
 | Native Swift / SwiftUI app | `ScreenshotMonitorKit`, `CursorMonitorKit`, `ClipboardMonitorKit`, `WindowMonitorKit`, `TextInputMonitorKit` (SwiftPM) | In-process, statically linked, no Node. Only these five sensors (no text selection, screen stream, camera, materials or detectors). |
 
@@ -28,18 +30,33 @@ screenshot helper at once). Both install event taps or AX observers and report e
 ## Node / Electron
 
 ```bash
-npm install ausm
+npm install @ausm/ausm
 ```
 
-Requirements: macOS 13+, Node >= 18, Xcode Command Line Tools, Python >= 3.9 (materials, OCR).
+Requirements to use it from npm: macOS 13+ and Node >= 18. The native helpers ship prebuilt, so
+installing needs no Swift toolchain. Xcode Command Line Tools are only needed if a native module
+has no prebuilt binary for the host's Node or Electron version (`better-sqlite3`), and to build
+AUSM from a clone of the repo (which also needs Swift >= 5.9).
 
-Materials need the Python packages in the material-manager's `py/requirements.txt` (numpy,
-opencv-python-headless, pyobjc Vision/Quartz). Python is found as `materialManager.pythonPath`, then
-a `.venv` in the project, then `python3`. Without them, materials fail quietly (a warning in the log).
+Both `import` and `require` work for `@ausm/ausm`, `@ausm/ausm/runtime` and `@ausm/ausm/clients`. `@ausm/ausm/bridge`
+needs `electron` installed.
+
+What each layer needs on top:
+
+| Layer | Needs |
+| --- | --- |
+| Sensors | Accessibility for the host binary; Screen Recording for screenshots |
+| Materials | Screen Recording, `enableScreenStreaming`, `materialManager.enabled`, Python >= 3.9 with `pip install -r node_modules/@ausm/device-macos-material-manager/py/requirements.txt` (numpy, opencv-python-headless) |
+| OCR text | `memory: { ocrEnabled: true }` and `pip install -r node_modules/@ausm/core/src/memory/py/requirements.txt` (pyobjc Vision/Quartz) |
+| Detectors, tasks | Materials on, and a configured vision model |
+| Material Chat | `materialChat.enabled`, a real `materialManager.dbPath`, `ANTHROPIC_API_KEY` for ask and chat |
+
+Python is found as `materialManager.pythonPath`, then a `.venv` in the project, then `python3`.
+Without the packages, materials fail quietly (a warning in the log).
 
 ```ts
-import { createRuntime } from 'ausm/runtime';     // runtime: only from 'ausm/runtime'
-import type { MaterialEvent, TaskEvent } from 'ausm'; // types: from 'ausm'
+import { createRuntime } from '@ausm/ausm/runtime';     // runtime: only from '@ausm/ausm/runtime'
+import type { MaterialEvent, TaskEvent } from '@ausm/ausm'; // types: from '@ausm/ausm'
 
 const runtime = createRuntime({
   enableScreenStreaming: true,                      // needed for materials
@@ -96,7 +113,7 @@ each `on*` method returns a function that unsubscribes.
 ### Queries (after `initialize()`, main process only)
 
 `getMaterials(limit)`, `getMaterialLatestFrame(id)`, `getMaterialFrames(id, limit)`,
-`getMaterialContent(id)` (OCR text), `getMaterialWeights(halfLifeDays)`,
+`getMaterialContent(id)` (`{ text, lineCount, frameCount, … }` or null), `getMaterialWeights(halfLifeDays)`,
 `getScreenshots(limit, since)`, `getScreenshot(id)`, `getScreenDisplays()`,
 `captureLatestScreenFrame()`, `getCameraDevices()`, `captureLatestCameraFrame()`,
 `freezeMemory()` / `unfreezeMemory()` / `isMemoryFrozen()`.
@@ -109,7 +126,7 @@ These are stubs that return empty values. Do not build on them: `getImmediateCon
 
 ```ts
 // main.ts. Import the bridge BEFORE app.ready (it registers the ausm-screenshot:// scheme).
-import { setupAUSMElectronBridge, getAUSMPreloadPath } from 'ausm/bridge/electron';
+import { setupAUSMElectronBridge, getAUSMPreloadPath } from '@ausm/ausm/bridge/electron';
 
 const win = new BrowserWindow({
   webPreferences: { preload: getAUSMPreloadPath(), contextIsolation: true },
@@ -120,7 +137,7 @@ const bridge = setupAUSMElectronBridge(win, runtime);
 Renderer: `window.ausm.onTextSelection(cb)`, `onScreenshot`, `onWindowState`, `onTextInput`,
 `onMaterialEvent`, `onCursorPlusPlusEvent`, `onCopyPasteEvent`, `onSpaceChange`, `onTaskEvent`,
 `onDetectorEvent`, `getScreenDisplays()`, `subscribeScreenStream(cb)`. To add your own preload
-API, write your own preload that calls `exposeAUSM()` from `ausm/bridge/preload-api` and exposes
+API, write your own preload that calls `exposeAUSM()` from `@ausm/ausm/bridge/preload-api` and exposes
 your namespace separately (with `contextIsolation: true`).
 
 Materials and memory run under the system `node`, not Electron's (`materialManager.nodePath` to
@@ -193,6 +210,19 @@ and a real `materialManager.dbPath`, and it sends the user's material text to An
 It listens on 127.0.0.1 and only answers requests with no `Origin` (main process) or from
 localhost and `file://` pages. A renderer on a custom scheme must be listed:
 `materialChat: { enabled: true, allowedOrigins: ['app://my-app'] }`.
+
+| Endpoint | Returns | Sends to Anthropic |
+| --- | --- | --- |
+| `GET /memory/search?q=` (`top_k`, `bundle`, `since`, `recency_weight`, `dwell_weight`, `recency_half_life`) | `{ hits }` ranked by text match, recency and frames kept | No |
+| `GET /memory/recent` (`top_k`, `since`, `until`, `bundle`) | `{ hits }`, newest first | No |
+| `GET /material/:id` | `{ id, text, title, application, firstSeen, lastSeen, frameCount }` | No |
+| `POST /ask` `{ question }` | `{ markdown, citations, hits, … }` | Yes |
+| `POST /chat/stream` `{ question, sessionId? }` | SSE: `session`, `agent_step`, `tool_call`, `tool_result`, `token`, `usage`, `citations`, `done` | Yes |
+| `GET`/`POST /sessions`, `GET`/`PATCH`/`DELETE /sessions/:id` | Saved chats | No |
+
+Search only covers materials that have OCR text, so turn on `memory.ocrEnabled`. Without
+`ANTHROPIC_API_KEY` the search, recent and read endpoints still work; ask and chat return 500.
+If the app exits without `shutdown()`, the service is stopped with it.
 
 ## Native Swift
 

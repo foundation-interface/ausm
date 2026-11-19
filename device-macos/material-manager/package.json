@@ -19,7 +19,7 @@
     }
   },
   "bin": {
-    "material-manager-service": "./dist/service.js"
+    "material-manager-service": "dist/service.js"
   },
   "files": [
     "dist",

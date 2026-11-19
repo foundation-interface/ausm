@@ -55,7 +55,7 @@
     "LICENSE"
   ],
   "bin": {
-    "memory-service": "./dist/memory-service.js"
+    "memory-service": "dist/memory-service.js"
   },
   "scripts": {
     "build": "tsup",
