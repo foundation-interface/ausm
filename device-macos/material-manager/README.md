@@ -5,7 +5,7 @@ events plus screen-stream frames into a deduplicated history of window
 screenshots, grouped by **material** (one material per distinct window
 title, i.e. per tab/document within a window).
 
-Most users get this through `ausm/runtime` (`materialManager: { enabled: true }`),
+Most users get this through `@ausm/ausm/runtime` (`materialManager: { enabled: true }`),
 which runs it as a child process via `@ausm/core`'s `MaterialClient`. Use the
 package directly only if you want the pieces in-process.
 

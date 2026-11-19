@@ -57,16 +57,16 @@ flowchart TD
     rt --> host["Your application"]
 ```
 
-three layers, each optional on top of the one before: **sensors** report what happens, **materials** remember what you looked at, and **tasks** name what you're doing.
+three layers, each optional on top of the one before: **sensors** emit typed events for selection, typing, clipboard, screenshots and window focus; **materials** are the tabs and files you view, each stored as deduplicated frames and ocr text in sqlite; **detectors** are markdown rules that a vision model checks against the focused window and your recent events. memory is where materials are stored, and tasks come from the one detector that ships with ausm.
 
 ## use
 
 ```sh
-npm install ausm
+npm install @ausm/ausm
 ```
 
 ```ts
-import { createRuntime } from 'ausm/runtime'
+import { createRuntime } from '@ausm/ausm/runtime'
 
 const ausm = createRuntime({
   enableScreenStreaming: true,
@@ -80,16 +80,41 @@ ausm.onTaskEvent(e => console.log('doing', e.taskLabel))
 await ausm.initialize()
 ```
 
-building a native mac app? five sensors also come as swift packages that compile into your app, with no node at all:
+`import` and `require` both work. using a coding agent? `npx skills add foundation-interface/ausm` teaches it the api.
+
+### what you need
+
+the npm package needs macos 13+ and node 18+. the native helpers ship prebuilt, so there is no swift or xcode step. on top of that, each layer asks for a little more:
+
+| layer | needs |
+|---|---|
+| sensors | **accessibility** for whatever runs it: your terminal in development, your app once packaged. screenshots also need **screen recording** |
+| materials | **screen recording**, `enableScreenStreaming` and `materialManager.enabled`, and python 3.9+ with `pip install -r node_modules/@ausm/device-macos-material-manager/py/requirements.txt` |
+| ocr text | `memory: { ocrEnabled: true }` and `pip install -r node_modules/@ausm/core/src/memory/py/requirements.txt` |
+| detectors | materials on, and a vision model (see [models](#models)). without one they stay off |
+| material chat | `materialChat: { enabled: true }`, a real `dbPath` and `ANTHROPIC_API_KEY` |
+
+a missing permission or python package is only logged, as `[AUSM] …` on stderr. nothing throws, and no events arrive, so check the log first when a callback stays quiet.
+
+### native swift
+
+building a native mac app? five sensors also come as a swift package that compiles into your app, with no node at all:
 
 ```swift
 .package(url: "https://github.com/foundation-interface/ausm.git", from: "0.1.0")
 // products: ScreenshotMonitorKit, CursorMonitorKit, ClipboardMonitorKit, WindowMonitorKit, TextInputMonitorKit
 ```
 
-your app (or, in development, your terminal) needs **accessibility**, plus **screen recording** for screenshots and frames.
+- **sensors only.** materials, memory and detectors live in the node runtime
+- **the same code as npm.** the node runtime runs these kits as helper processes; here they link into your app
+- **one path per sensor.** a kit and its node helper running together report every event twice
+- **sign your app.** it holds the accessibility and screen recording grants, and macos drops them on every rebuild without a stable signing identity
 
-using a coding agent? `npx skills add foundation-interface/ausm` teaches it the api.
+[device-macos/README-swift-kits.md](device-macos/README-swift-kits.md) has the api of each kit.
+
+### see it running
+
+[ausm visualizer](https://github.com/foundation-interface/ausm-visualizer) is a small menu bar app built on `@ausm/ausm`: every sensor on one live timeline, with the materials you open and the tasks ausm detects. clone it to watch your own events arrive, or read `app/runtime.ts` there for a full runtime config.
 
 ## sensors
 
@@ -209,9 +234,37 @@ erDiagram
 
 `freezeMemory()` pauses all writes. the file sits in a folder only you can read, and deleting it forgets everything.
 
-## tasks
+### material chat
 
-the detector pipeline looks at the focused window's latest frame and your recent events, and asks a vision model which of your **detectors** fired. a detector is a plain-language rule in a markdown file. ausm ships one, `rapid-task`, which names what you're doing; the `TaskTracker` turns those names into `TaskEvent`s with stable ids, so "writing typescript: runtime.ts" stays one task while you work on it.
+an optional local http service over memory: search your materials, or ask claude about them. the runtime starts it as a child process on `127.0.0.1:8788`; don't run the `material-chat` bin yourself.
+
+```ts
+const ausm = createRuntime({
+  enableScreenStreaming: true,
+  materialManager: { enabled: true, dbPath: 'ausm.db' },
+  memory: { ocrEnabled: true },        // search reads ocr text
+  materialChat: { enabled: true },
+})
+await ausm.initialize()
+
+const base = ausm.getHttpUrl()
+const { hits } = await fetch(base + '/memory/search?q=context').then(r => r.json())
+```
+
+| endpoint | returns | leaves the mac |
+|---|---|---|
+| `GET /memory/search?q=` | materials ranked by text match, recency and frames kept | nothing |
+| `GET /memory/recent` | materials with text, newest first | nothing |
+| `GET /material/:id` | one material's merged ocr text | nothing |
+| `POST /ask` `{ question }` | a markdown answer with citations | the question and material text, to anthropic |
+| `POST /chat/stream` `{ question, sessionId? }` | the same answer as server-sent events, with history | the question and material text, to anthropic |
+| `GET /sessions` | saved chats | nothing |
+
+ask and chat need `ANTHROPIC_API_KEY`; the rest work without it. the service answers requests with no `Origin`, and from localhost and `file://` pages. list other origins in `materialChat.allowedOrigins`.
+
+## detectors
+
+a **detector** is a plain-language rule in a markdown file. the detector pipeline looks at the focused window's latest frame and your recent events, and asks a vision model which detectors fired. ausm ships one, `rapid-task`, which names what you're doing; the `TaskTracker` turns those names into `TaskEvent`s with stable ids, so "writing typescript: runtime.ts" stays one task while you work on it.
 
 ### declare a detector
 

@@ -3,11 +3,11 @@
 ausm (activity understanding and scaffolding medium) turns what you do on your Mac into live, typed context for apps and agents: what you select, type, copy and capture, which window or file you're looking at, and what task you're working on. It runs on your machine and hands your code structured events as they happen.
 
 ```sh
-npm install ausm
+npm install @ausm/ausm
 ```
 
 ```ts
-import { createRuntime } from 'ausm/runtime';
+import { createRuntime } from '@ausm/ausm/runtime';
 
 const runtime = createRuntime();
 runtime.onTextSelectionEvent((e) => console.log('selected', e.selectedText));

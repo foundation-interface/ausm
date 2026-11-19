@@ -1,5 +1,5 @@
 {
-  "name": "ausm",
+  "name": "@ausm/ausm",
   "version": "0.1.0",
   "description": "AUSM — Activity Understanding and Scaffolding Medium (runtime, Electron bridge, material-chat)",
   "main": "./dist/index.js",

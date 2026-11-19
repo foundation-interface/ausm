@@ -73,11 +73,11 @@ flowchart TD
 
 | Package / path | Role |
 |---|---|
-| `ausm` → `packages/ausm` | Public install: re-exports core + bridge + material-chat |
+| `@ausm/ausm` → `packages/ausm` | Public install: re-exports core + bridge + material-chat |
 | `@ausm/core` → `packages/core/src/index.ts` | Event types + factories |
-| `ausm/runtime` → `packages/core/src/runtime/index.ts` | `createRuntime()`, `AUSMRuntime`, `AUSMRuntimeConfig` |
-| `ausm/clients` → `packages/core/src/runtime/clients/` | Native / process bridges |
-| `ausm/bridge` → `packages/bridge` | Electron IPC (`/electron`, `/preload`, `/preload-api`) |
+| `@ausm/ausm/runtime` → `packages/core/src/runtime/index.ts` | `createRuntime()`, `AUSMRuntime`, `AUSMRuntimeConfig` |
+| `@ausm/ausm/clients` → `packages/core/src/runtime/clients/` | Native / process bridges |
+| `@ausm/ausm/bridge` → `packages/bridge` | Electron IPC (`/electron`, `/preload`, `/preload-api`) |
 | `@ausm/detector-pipeline` → `packages/detector-pipeline` | In-process evaluator (`vertex-client.ts`, `cerebras-client.ts`) |
 | `@ausm/material-chat` → `material-chat` | Memory search + Claude agent service (`material-chat` bin) |
 | `packages/core/src/events/` | One file per `AUSMEventKind` |
@@ -92,8 +92,8 @@ flowchart TD
 The AUSM package can be used in the following way.
 
 ```typescript
-import { createRuntime, type AUSMRuntimeConfig } from 'ausm/runtime';
-import type { MaterialEvent, TaskEvent } from 'ausm';
+import { createRuntime, type AUSMRuntimeConfig } from '@ausm/ausm/runtime';
+import type { MaterialEvent, TaskEvent } from '@ausm/ausm';
 
 const runtime = createRuntime({
   enableScreenStreaming: true,
@@ -194,10 +194,10 @@ Child process `dist/memory-service.js`. SQLite WAL + `sqlite-vec`; embeddings `X
 
 ## Electron
 
-Import `ausm/bridge/electron` **before** `app.ready` (`ausm-screenshot://`).
+Import `@ausm/ausm/bridge/electron` **before** `app.ready` (`ausm-screenshot://`).
 
 ```typescript
-import { setupAUSMElectronBridge, getAUSMPreloadPath } from 'ausm/bridge/electron';
+import { setupAUSMElectronBridge, getAUSMPreloadPath } from '@ausm/ausm/bridge/electron';
 const win = new BrowserWindow({ webPreferences: { preload: getAUSMPreloadPath(), contextIsolation: true } });
 const bridge = setupAUSMElectronBridge(win, runtime);
 ```
@@ -208,7 +208,9 @@ Default preload = `window.ausm` only. Host extras: `exposeAUSM()` from `/preload
 
 ## Setup
 
-macOS 13+, Xcode CLI Tools, Node ≥ 18, Swift ≥ 5.9, Python ≥ 3.9.
+To use the npm package: macOS 13+, Node ≥ 18, and Python ≥ 3.9 for materials and OCR. Helpers ship prebuilt.
+
+To build from this repo: also Xcode CLI Tools and Swift ≥ 5.9.
 
 Permissions (Terminal **and** Electron.app): Screen Recording, Accessibility, Camera (if streaming).
 
@@ -267,7 +269,7 @@ npm run typecheck && npm run clean
 
 ## Publish (npm)
 
-Hosts install the unscoped `ausm` package. Internals stay under `@ausm/*`. The monorepo root stays private. After `npm run build`:
+Hosts install `@ausm/ausm`. (npm refuses the bare name `ausm` as too similar to existing packages.) The other `@ausm/*` packages are internals. The monorepo root stays private. After `npm run build`:
 
 1. Create the `@ausm` org on npm (for the scoped internals) and `npm login`.
 2. `npm run pack:check` and confirm each tarball includes `dist`, Swift helpers under `build/`, `detectors/` (core), and `python/screen-stream-reader` (screen-stream).
@@ -276,13 +278,13 @@ Hosts install the unscoped `ausm` package. Internals stay under `@ausm/*`. The m
    - `@ausm/core`
    - material-manager, screenshot-detector, clipboard-monitor
    - `@ausm/bridge`, `@ausm/material-chat`
-   - `ausm` (the public umbrella — publish last)
-4. From each package directory: `npm publish --access public` (unscoped `ausm`: `npm publish -w ausm`).
+   - `@ausm/ausm` (the public umbrella — publish last)
+4. `sh scripts/publish-all.sh` publishes them in that order (add `--dry-run` to rehearse). It ships what is already built, skips versions that are already on the registry, and needs two-factor authentication on the npm account.
 
 Host install:
 
 ```bash
-npm install ausm
+npm install @ausm/ausm
 ```
 
 macOS helpers ship as prebuilt binaries in each device package. Text-selection compiles on install unless `prebuilds/` were generated (`npm run build:prebuilds` in that package before publish). Frame crop needs Python with `pip install -r device-macos/material-manager/py/requirements.txt` (numpy, opencv-python-headless, pyobjc Vision/Quartz; shipped in `@ausm/device-macos-material-manager`), and OCR also `packages/core/src/memory/py/requirements.txt`.
