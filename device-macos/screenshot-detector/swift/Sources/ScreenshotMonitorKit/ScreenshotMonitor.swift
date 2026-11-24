@@ -103,7 +103,11 @@ public final class ScreenshotMonitor: @unchecked Sendable {
     /// lookups and the capture itself. Production uses the real implementations; tests inject
     /// fakes so no process scan, window list or ScreenCaptureKit call is made.
     struct Environment {
-        var scan: () -> ScreenshotProcessScan = { ScreenshotProcessScan.scan() }
+        /// Called on the monitor's queue only (the scanner keeps state between polls).
+        var scan: () -> ScreenshotProcessScan = {
+            let scanner = ProcessScanner()
+            return { scanner.scan() }
+        }()
         var arguments: (pid_t) -> [String]? = { ScreenshotProcessScan.arguments(of: $0) }
         var displayContaining: (CGPoint) -> CGDirectDisplayID = { ScreenCapture.display(containing: $0) }
         var backingScale: (CGDirectDisplayID) -> CGFloat = { ScreenCapture.backingScale(of: $0) }
