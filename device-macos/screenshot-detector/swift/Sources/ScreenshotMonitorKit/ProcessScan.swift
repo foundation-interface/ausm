@@ -11,32 +11,53 @@ struct ScreenshotProcessScan {
     /// screenshot hotkey, the `screencapture` command and third-party callers) and
     /// `screencaptureui` (the persistent Screenshot.app agent that owns the selection overlay,
     /// the Cmd+Shift+5 toolbar and the floating thumbnail).
+    ///
+    /// Names every process on the machine, so it is expensive to call many times a second:
+    /// polling goes through `ProcessScanner`, which only names what changed.
     static func scan() -> ScreenshotProcessScan {
         var result = ScreenshotProcessScan()
-        // proc_listpids wants a byte count; size the buffer from the kernel's own estimate.
-        let needed = proc_listpids(UInt32(PROC_ALL_PIDS), 0, nil, 0)
-        let capacity = max(Int(needed) / MemoryLayout<pid_t>.stride + 256, 1024)
-        var pids = [pid_t](repeating: 0, count: capacity)
-        let bytes = pids.withUnsafeMutableBytes { buf -> Int32 in
-            proc_listpids(UInt32(PROC_ALL_PIDS), 0, buf.baseAddress, Int32(buf.count))
-        }
-        if bytes <= 0 { return result }
-        let count = Int(bytes) / MemoryLayout<pid_t>.stride
-
-        var nameBuf = [CChar](repeating: 0, count: Int(MAXPATHLEN))
-        for i in 0..<count {
-            let pid = pids[i]
-            if pid <= 0 { continue }
-            let n = proc_name(pid, &nameBuf, UInt32(nameBuf.count))
-            if n <= 0 { continue }
-            let name = String(cString: nameBuf)
-            if name == "screencapture" {
-                result.screencapture.insert(pid)
-            } else if name == "screencaptureui" {
-                result.screencaptureui.insert(pid)
-            }
-        }
+        for pid in listPIDs() { result.insert(pid, kind: kind(of: pid)) }
         return result
+    }
+
+    enum Kind: UInt8 { case other, screencapture, screencaptureui }
+
+    mutating func insert(_ pid: pid_t, kind: Kind) {
+        switch kind {
+        case .screencapture: screencapture.insert(pid)
+        case .screencaptureui: screencaptureui.insert(pid)
+        case .other: break
+        }
+    }
+
+    /// Every pid alive right now (one system call, unless the table outgrew the buffer).
+    static func listPIDs() -> [pid_t] {
+        var capacity = 4096
+        while true {
+            var pids = [pid_t](repeating: 0, count: capacity)
+            let bytes = pids.withUnsafeMutableBytes { buf -> Int32 in
+                proc_listpids(UInt32(PROC_ALL_PIDS), 0, buf.baseAddress, Int32(buf.count))
+            }
+            if bytes <= 0 { return [] }
+            let count = Int(bytes) / MemoryLayout<pid_t>.stride
+            // A full buffer may have been cut short: ask again with room to spare.
+            if count >= capacity, capacity < 1 << 20 { capacity *= 4; continue }
+            pids.removeLast(pids.count - min(pids.count, count))
+            return pids.filter { $0 > 0 }
+        }
+    }
+
+    /// What a pid is, by its process name (one system call).
+    static func kind(of pid: pid_t) -> Kind {
+        // proc_name returns at most 2 * MAXCOMLEN bytes.
+        var nameBuf = [CChar](repeating: 0, count: 64)
+        guard proc_name(pid, &nameBuf, UInt32(nameBuf.count)) > 0 else { return .other }
+        return nameBuf.withUnsafeBufferPointer { buf -> Kind in
+            guard let base = buf.baseAddress else { return .other }
+            if strcmp(base, "screencapture") == 0 { return .screencapture }
+            if strcmp(base, "screencaptureui") == 0 { return .screencaptureui }
+            return .other
+        }
     }
 
     /// Command-line arguments of a process (argv[1...]), or nil if unreadable.
@@ -147,5 +168,70 @@ struct ScreencaptureInvocation {
             // Non-interactive invocations with a positional output path write a file.
             destination = arguments.contains(where: { !$0.hasPrefix("-") && $0.contains("/") }) ? .file : (mode == .unknown ? .unknown : .file)
         }
+    }
+}
+
+
+/// The same answer as `ScreenshotProcessScan.scan()`, cheap enough to ask many times a second.
+///
+/// The monitor polls the process table every few tens of milliseconds, and naming every process
+/// each time costs one system call per process (several percent of a CPU core on a busy Mac,
+/// around the clock). Between two polls almost nothing changes, so the scanner lists the pids
+/// (one call) and only names:
+///   - pids it has not seen before, and
+///   - pids it first saw less than `settleTime` ago: a process is created as a copy of its
+///     parent and takes its own name a moment later (fork, then exec), so a first look can be
+///     too early.
+/// Everything is named again every `fullScanInterval`, which covers what the rules above cannot
+/// see: a pid reused within one poll, or a long-running process replacing itself with
+/// `screencapture`.
+///
+/// Not thread-safe: use it from one queue.
+final class ProcessScanner {
+    var settleTime: TimeInterval = 1
+    var fullScanInterval: TimeInterval = 2
+
+    private let listPIDs: () -> [pid_t]
+    private let kindOf: (pid_t) -> ScreenshotProcessScan.Kind
+    private let now: () -> TimeInterval
+
+    private struct Entry {
+        var kind: ScreenshotProcessScan.Kind
+        var firstSeen: TimeInterval
+    }
+    private var known: [pid_t: Entry] = [:]
+    private var lastFullScan: TimeInterval = -.infinity
+
+    init(listPIDs: @escaping () -> [pid_t] = { ScreenshotProcessScan.listPIDs() },
+         kindOf: @escaping (pid_t) -> ScreenshotProcessScan.Kind = { ScreenshotProcessScan.kind(of: $0) },
+         now: @escaping () -> TimeInterval = { ProcessInfo.processInfo.systemUptime }) {
+        self.listPIDs = listPIDs
+        self.kindOf = kindOf
+        self.now = now
+    }
+
+    func scan() -> ScreenshotProcessScan {
+        let time = now()
+        // Also true after the monitor was stopped for a while: what was remembered is stale.
+        let full = time - lastFullScan >= fullScanInterval
+        if full { lastFullScan = time }
+
+        let pids = listPIDs()
+        var next: [pid_t: Entry] = [:]
+        next.reserveCapacity(pids.count)
+        var result = ScreenshotProcessScan()
+        for pid in pids {
+            var entry: Entry
+            if let seen = known[pid] {
+                entry = seen
+                if full || time - seen.firstSeen < settleTime { entry.kind = kindOf(pid) }
+            } else {
+                entry = Entry(kind: kindOf(pid), firstSeen: time)
+            }
+            next[pid] = entry
+            result.insert(pid, kind: entry.kind)
+        }
+        known = next
+        return result
     }
 }
